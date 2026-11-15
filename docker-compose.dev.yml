@@ -1,0 +1,9 @@
+# Zusatz für die Entwicklung: macht die Datenbank auf dem eigenen Rechner erreichbar,
+# damit Backend und Frontend direkt mit `npm run dev` laufen können.
+#
+#   podman compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"

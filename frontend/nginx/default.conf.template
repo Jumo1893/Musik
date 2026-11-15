@@ -1,0 +1,47 @@
+# Liefert die gebaute Weboberfläche aus und reicht /api an das Backend weiter.
+# Die Datei ist eine Vorlage: Beim Start des Containers ersetzt das nginx-Image
+# ${NGINX_LOCAL_RESOLVERS} durch den DNS-Server des Container-Netzes.
+
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Der Browser darf nur Code und Styles der App selbst laden und nur mit der eigenen
+    # API sprechen. Bilder (Cover) dürfen von überall kommen.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https: http:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    # „backend“ wird erst bei der Anfrage aufgelöst statt einmalig beim Start: So startet
+    # nginx auch, wenn die API noch nicht läuft, und findet sie nach einem Neustart des
+    # Backend-Containers (neue IP-Adresse) von selbst wieder.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    location /api/ {
+        set $backend http://backend:3000;
+        proxy_pass $backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Dateien unter /assets tragen einen Hash im Namen und dürfen lange gecacht werden.
+    location /assets/ {
+        expires 1y;
+        try_files $uri =404;
+    }
+
+    # Alles andere ist die Single-Page-App: unbekannte Pfade wie /playlists/3 liefern
+    # index.html, den Rest übernimmt der Router im Browser.
+    location / {
+        expires -1;
+        try_files $uri $uri/ /index.html;
+    }
+}

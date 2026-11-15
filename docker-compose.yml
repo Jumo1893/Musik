@@ -1,0 +1,66 @@
+# Musik-Bibliothek: Datenbank, API und Weboberfläche.
+#
+#   podman compose up -d --build     (oder: docker compose up -d --build)
+#
+# Danach läuft die App unter http://localhost:8090. Alle Werte der Form ${NAME:-Standard}
+# lassen sich über eine .env-Datei neben dieser Datei ändern (Vorlage: .env.example).
+
+name: musik
+
+services:
+  db:
+    image: docker.io/library/postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-musik}
+      POSTGRES_USER: ${POSTGRES_USER:-musik}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-musik}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-musik}
+      PGUSER: ${POSTGRES_USER:-musik}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-musik}
+      ITUNES_COUNTRY: ${ITUNES_COUNTRY:-de}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      # Standard: nur von diesem Rechner aus erreichbar. WEB_BIND=0.0.0.0 öffnet die App
+      # für das Heimnetz – sie hat keine Anmeldung, also nur in vertrauten Netzen nutzen.
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8090}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db-data:
