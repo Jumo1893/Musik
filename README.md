@@ -6,9 +6,9 @@ Gespeichert werden nur Angaben und Links zu den Songs – **keine Audiodateien**
 
 ## Was die App kann
 
-- **Songs** mit Titel, Interpret, Album, Dauer, Jahr, Genre, BPM, Bewertung (1–5 Sterne), Energie (1–5), Notizen und Cover.
+- **Songs** mit Titel, Interpret, Album, Dauer, Jahr, Genres, BPM, Bewertung (1–5 Sterne), Energie (1–5), Notizen und Cover. Ein Song kann mehrere Genres haben; die schon vorhandenen stehen im Song-Dialog in einer aufklappbaren Liste, neue lassen sich einfach eintippen.
   Die Online-Suche holt die Angaben samt Cover und Apple-Music-Link aus dem iTunes-Katalog, sodass meist nur noch Kategorien und Bewertung fehlen.
-- **Kategorien** wie „melancholisch“ oder „aufpushend“: frei anlegbar, farbig, beliebig viele pro Song. Acht Kategorien sind als Startpunkt angelegt.
+- **Kategorien** wie „melancholisch“ oder „aufpushend“: frei anlegbar, farbig, beliebig viele pro Song. 20 Kategorien sind als Startpunkt angelegt – Stimmungen wie „verträumt“ oder „episch“ und Anlässe wie „Sport“, „Roadtrip“ oder „Einschlafen“.
 - **Links zu Apple Music, YouTube und YouTube Music** an jedem Song. Ist ein Link gespeichert, führt der Knopf direkt zum Song, sonst zur Suche auf der Plattform. Ein YouTube-Link genügt auch für YouTube Music.
 - **Auswertung**: Kennzahlen und Diagramme zu Kategorien, Interpreten, Genres, Jahrzehnten, Songlänge, Bewertung und Energie, häufige Kategorie-Kombinationen und ein Überblick, wo noch Angaben fehlen.
 - **Playlists**: Der Generator stellt aus gewünschten und ausgeschlossenen Kategorien, Ziel-Dauer, Energie, Bewertung, Jahr und Genre einen Vorschlag zusammen – wahlweise gemischt, aufbauend, ausklingend oder als Bogen. Vorschläge lassen sich neu mischen, einzelne Songs austauschen, gespeicherte Playlists von Hand umsortieren und ergänzen.

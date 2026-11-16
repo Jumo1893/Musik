@@ -313,7 +313,11 @@ export function StatsPage() {
           <BarList rows={artists.rows} />
         </ChartCard>
 
-        <ChartCard title="Genres" subtitle="Anzahl Songs je Genre." table={genres.table}>
+        <ChartCard
+          title="Genres"
+          subtitle="Anzahl Songs je Genre; ein Song mit mehreren Genres zählt bei jedem mit."
+          table={genres.table}
+        >
           <BarList rows={genres.rows} />
         </ChartCard>
 

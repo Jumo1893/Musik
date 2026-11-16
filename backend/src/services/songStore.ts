@@ -9,7 +9,7 @@ interface SongRow {
   album: string | null;
   duration_seconds: number | null;
   release_year: number | null;
-  genre: string | null;
+  genres: string[];
   bpm: number | null;
   energy: number | null;
   rating: number | null;
@@ -24,7 +24,7 @@ interface SongRow {
 }
 
 const SELECT_SONGS = `
-  SELECT s.id, s.title, s.artist, s.album, s.duration_seconds, s.release_year, s.genre, s.bpm,
+  SELECT s.id, s.title, s.artist, s.album, s.duration_seconds, s.release_year, s.genres, s.bpm,
          s.energy, s.rating, s.notes, s.apple_music_url, s.youtube_url, s.youtube_music_url,
          s.artwork_url, s.created_at, s.updated_at,
          COALESCE(
@@ -43,7 +43,7 @@ function toSong(row: SongRow): Song {
     album: row.album,
     durationSeconds: row.duration_seconds,
     releaseYear: row.release_year,
-    genre: row.genre,
+    genres: row.genres,
     bpm: row.bpm,
     energy: row.energy,
     rating: row.rating,
@@ -66,7 +66,7 @@ function columnValues(input: SongInput): unknown[] {
     input.album,
     input.durationSeconds,
     input.releaseYear,
-    input.genre,
+    input.genres,
     input.bpm,
     input.energy,
     input.rating,
@@ -101,9 +101,9 @@ export async function getSong(db: Queryable, id: number): Promise<Song | null> {
 /** Muss in einer Transaktion laufen: Song und Kategorie-Zuordnungen gehören zusammen. */
 export async function createSong(db: Queryable, input: SongInput): Promise<Song> {
   const { rows } = await db.query<{ id: number }>(
-    `INSERT INTO songs (title, artist, album, duration_seconds, release_year, genre, bpm, energy,
+    `INSERT INTO songs (title, artist, album, duration_seconds, release_year, genres, bpm, energy,
                         rating, notes, apple_music_url, youtube_url, youtube_music_url, artwork_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING id`,
     columnValues(input),
   );
@@ -117,7 +117,7 @@ export async function updateSong(db: Queryable, id: number, input: SongInput): P
   const result = await db.query(
     `UPDATE songs
         SET title = $1, artist = $2, album = $3, duration_seconds = $4, release_year = $5,
-            genre = $6, bpm = $7, energy = $8, rating = $9, notes = $10, apple_music_url = $11,
+            genres = $6::text[], bpm = $7, energy = $8, rating = $9, notes = $10, apple_music_url = $11,
             youtube_url = $12, youtube_music_url = $13, artwork_url = $14, updated_at = now()
       WHERE id = $15`,
     [...columnValues(input), id],

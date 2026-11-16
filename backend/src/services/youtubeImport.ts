@@ -67,7 +67,7 @@ export async function importFromYoutube(db: Queryable, input: YoutubeImportInput
       album: null,
       durationSeconds: item.durationSeconds,
       releaseYear: null,
-      genre: null,
+      genres: [],
       bpm: null,
       energy: null,
       rating: null,

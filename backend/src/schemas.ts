@@ -14,6 +14,26 @@ function unique(ids: number[]): number[] {
 
 const idList = (maxLength: number) => z.array(idSchema).max(maxLength).default([]).transform(unique);
 
+/** Höchstens so viele Genres hat ein Song. */
+export const MAX_GENRES_PER_SONG = 20;
+
+/** Leere Einträge entfallen; jedes Genre zählt nur einmal, gleich in welcher Schreibweise (die erste bleibt). */
+function uniqueGenres(genres: string[]): string[] {
+  const seen = new Set<string>();
+  return genres.filter((genre) => {
+    const key = genre.toLowerCase();
+    if (genre === '' || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const genreList = z
+  .array(z.string().trim().max(100))
+  .max(MAX_GENRES_PER_SONG, `Bitte höchstens ${MAX_GENRES_PER_SONG} Genres angeben.`)
+  .default([])
+  .transform(uniqueGenres);
+
 const requiredText = (maxLength: number, messageWhenEmpty: string) =>
   z.string({ error: messageWhenEmpty }).trim().min(1, messageWhenEmpty).max(maxLength);
 
@@ -82,7 +102,7 @@ export const songInputSchema = z.object({
   album: optionalText(300),
   durationSeconds: optionalInt(1, 86_399),
   releaseYear: optionalInt(1000, 2200),
-  genre: optionalText(100),
+  genres: genreList,
   bpm: optionalInt(20, 400),
   energy: optionalInt(1, 5),
   rating: optionalInt(1, 5),

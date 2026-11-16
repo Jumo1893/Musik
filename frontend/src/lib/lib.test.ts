@@ -3,7 +3,18 @@ import type { Category, Song } from '../types.ts';
 import { toCsv, toFilename } from './csv.ts';
 import { formatCount, formatDuration, formatTotalDuration, parseDuration } from './format.ts';
 import { extractYoutubeId, searchUrl, streamingLinks, youtubeQueueUrl, YOUTUBE_QUEUE_LIMIT } from './links.ts';
-import { distinctGenres, filterSongs, normalizeText, songCsvRow, sortSongs, totalDuration } from './songs.ts';
+import {
+  addGenre,
+  distinctGenres,
+  filterSongs,
+  matchGenres,
+  mergeGenres,
+  normalizeText,
+  removeGenre,
+  songCsvRow,
+  sortSongs,
+  totalDuration,
+} from './songs.ts';
 
 let nextId = 1;
 
@@ -16,7 +27,7 @@ function song(overrides: Partial<Song> = {}): Song {
     album: null,
     durationSeconds: null,
     releaseYear: null,
-    genre: null,
+    genres: [],
     bpm: null,
     energy: null,
     rating: null,
@@ -197,8 +208,8 @@ describe('CSV', () => {
 });
 
 describe('Songliste', () => {
-  const hurt = song({ title: 'Hurt', artist: 'Johnny Cash', album: 'American IV', genre: 'Country', categoryIds: [1, 2] });
-  const maedchen = song({ title: 'Mädchen', artist: 'Lucilectric', genre: 'Pop', categoryIds: [2] });
+  const hurt = song({ title: 'Hurt', artist: 'Johnny Cash', album: 'American IV', genres: ['Country'], categoryIds: [1, 2] });
+  const maedchen = song({ title: 'Mädchen', artist: 'Lucilectric', genres: ['Pop', 'Neue Deutsche Welle'], categoryIds: [2] });
   const africa = song({ title: 'Africa', artist: 'Toto', categoryIds: [] });
   const all = [hurt, maedchen, africa];
   const noFilter = { text: '', categoryIds: [], onlyUncategorized: false };
@@ -216,6 +227,7 @@ describe('Songliste', () => {
     expect(search('madchen')).toEqual(['Mädchen']);
     expect(search('MÄDCHEN')).toEqual(['Mädchen']);
     expect(search('pop')).toEqual(['Mädchen']);
+    expect(search('deutsche welle')).toEqual(['Mädchen']);
     expect(search('hurt toto')).toEqual([]);
   });
 
@@ -255,18 +267,49 @@ describe('Songliste', () => {
     expect(totalDuration([song({ durationSeconds: 100 }), song(), song({ durationSeconds: 20 })])).toBe(120);
   });
 
-  test('distinctGenres fasst Schreibweisen zusammen und sortiert', () => {
-    const songs = [song({ genre: 'Rock' }), song({ genre: 'pop' }), song({ genre: 'Pop' }), song({ genre: ' ' }), song()];
-    expect(distinctGenres(songs)).toEqual(['pop', 'Rock']);
+  test('distinctGenres sammelt die Genres aller Songs, fasst Schreibweisen zusammen und sortiert', () => {
+    const songs = [
+      song({ genres: ['Rock'] }),
+      song({ genres: ['pop', 'Dance'] }),
+      song({ genres: ['Pop', 'rock'] }),
+      song({ genres: [' '] }),
+      song(),
+    ];
+    expect(distinctGenres(songs)).toEqual(['Dance', 'pop', 'Rock']);
   });
 
-  test('songCsvRow schreibt Kategorien als Namen', () => {
+  test('mergeGenres nimmt die erste Schreibweise und ergänzt fehlende Genres', () => {
+    expect(mergeGenres(['Pop', 'Rock'], ['rock', ' Jazz '])).toEqual(['Jazz', 'Pop', 'Rock']);
+    expect(mergeGenres([], [])).toEqual([]);
+  });
+
+  test('addGenre und removeGenre achten nicht auf Groß-/Kleinschreibung', () => {
+    expect(addGenre(['Pop'], ' Dance ')).toEqual(['Pop', 'Dance']);
+    expect(addGenre(['Pop'], 'POP')).toEqual(['Pop']);
+    expect(addGenre(['Pop'], '   ')).toEqual(['Pop']);
+    expect(removeGenre(['Pop', 'Dance'], 'dance')).toEqual(['Pop']);
+  });
+
+  test('matchGenres findet Teile ohne Rücksicht auf Akzente; Treffer am Anfang stehen vorn', () => {
+    const genres = ['Dance', 'Electropop', 'Hip-Hop/Rap', 'Pop', 'Pop soul', 'Schlager', 'Électro'];
+    expect(matchGenres(genres, '')).toEqual(genres);
+    expect(matchGenres(genres, 'pop')).toEqual(['Pop', 'Pop soul', 'Electropop']);
+    expect(matchGenres(genres, 'hop')).toEqual(['Hip-Hop/Rap']);
+    expect(matchGenres(genres, 'electro')).toEqual(['Electropop', 'Électro']);
+    expect(matchGenres(genres, 'jazz')).toEqual([]);
+  });
+
+  test('songCsvRow schreibt Genres und Kategorien als Namen', () => {
     const categories = new Map<number, Category>([
       [1, { id: 1, name: 'ruhig', color: '#2a78d6', description: null, songCount: 1 }],
       [2, { id: 2, name: 'Abend', color: '#eb6834', description: null, songCount: 2 }],
     ]);
-    const row = songCsvRow({ ...hurt, durationSeconds: 217, rating: 5, categoryIds: [1, 2, 99] }, categories);
+    const row = songCsvRow(
+      { ...hurt, durationSeconds: 217, rating: 5, genres: ['Country', 'Folk'], categoryIds: [1, 2, 99] },
+      categories,
+    );
     expect(row.slice(0, 5)).toEqual(['Hurt', 'Johnny Cash', 'American IV', '3:37', 217]);
+    expect(row[6]).toBe('Country, Folk');
     expect(row[10]).toBe('Abend, ruhig');
   });
 });

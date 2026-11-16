@@ -46,11 +46,13 @@ const TOP_ARTISTS = `
    ORDER BY song_count DESC, lower(artist)
    LIMIT 15`;
 
+// Ein Song mit mehreren Genres zählt bei jedem davon mit; Songs ohne Genre bilden die Zeile NULL.
 const BY_GENRE = `
-  SELECT min(genre) AS genre, count(*)::integer AS song_count
-    FROM songs
-   GROUP BY lower(genre)
-   ORDER BY song_count DESC, lower(genre) NULLS LAST`;
+  SELECT min(g.genre) AS genre, count(DISTINCT s.id)::integer AS song_count
+    FROM songs s
+    LEFT JOIN LATERAL unnest(s.genres) AS g(genre) ON true
+   GROUP BY lower(g.genre)
+   ORDER BY song_count DESC, lower(g.genre) NULLS LAST`;
 
 const BY_DECADE = `
   SELECT ((release_year / 10) * 10)::integer AS decade, count(*)::integer AS song_count

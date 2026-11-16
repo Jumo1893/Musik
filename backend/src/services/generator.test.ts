@@ -20,7 +20,7 @@ function song(overrides: Partial<GeneratorSong> = {}): GeneratorSong {
     artist: `Interpret ${id}`,
     durationSeconds: 200,
     releaseYear: 2000,
-    genre: 'Pop',
+    genres: ['Pop'],
     energy: 3,
     rating: 3,
     categoryIds: [],
@@ -90,10 +90,18 @@ describe('Filter', () => {
   });
 
   test('Genres werden ohne Rücksicht auf Groß-/Kleinschreibung verglichen', () => {
-    const rock = song({ genre: 'Rock' });
-    const pop = song({ genre: 'Pop' });
-    const unknown = song({ genre: null });
+    const rock = song({ genres: ['Rock'] });
+    const pop = song({ genres: ['Pop'] });
+    const unknown = song({ genres: [] });
     assert.deepEqual(ids(pick([rock, pop, unknown], { genres: ['rock'] })), [rock.id]);
+  });
+
+  test('ein Song mit mehreren Genres passt, sobald eines davon gewünscht ist', () => {
+    const popRock = song({ genres: ['Pop', 'Rock'] });
+    const danceOnly = song({ genres: ['Dance'] });
+    const jazz = song({ genres: ['Jazz'] });
+    const picked = ids(pick([popRock, danceOnly, jazz], { genres: ['rock', 'Dance'] }));
+    assert.deepEqual(new Set(picked), new Set([popRock.id, danceOnly.id]));
   });
 
   test('Mindestbewertung schließt schlechter bewertete und unbewertete Songs aus', () => {

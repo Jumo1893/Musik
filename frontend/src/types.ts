@@ -7,7 +7,8 @@ export interface Song {
   album: string | null;
   durationSeconds: number | null;
   releaseYear: number | null;
-  genre: string | null;
+  /** Kann leer sein; jede Schreibweise kommt höchstens einmal vor. */
+  genres: string[];
   bpm: number | null;
   /** 1 (ruhig) bis 5 (sehr energiegeladen) */
   energy: number | null;

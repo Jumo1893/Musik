@@ -1,13 +1,14 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage } from '../api.ts';
 import { formatDuration, parseDuration } from '../lib/format.ts';
 import { extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform } from '../lib/links.ts';
-import { distinctGenres } from '../lib/songs.ts';
+import { addGenre, distinctGenres } from '../lib/songs.ts';
 import { useCategories, useConfig, useDeleteSong, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
 import type { LookupResult, Song, SongInput } from '../types.ts';
 import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.tsx';
+import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
 import { OnlineSearch } from './OnlineSearch.tsx';
 import { Artwork, ChipToggle, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput } from './ui.tsx';
@@ -19,7 +20,7 @@ interface FormState {
   album: string;
   duration: string;
   releaseYear: string;
-  genre: string;
+  genres: string[];
   bpm: string;
   energy: number | null;
   rating: number | null;
@@ -39,7 +40,7 @@ const EMPTY_FORM: FormState = {
   album: '',
   duration: '',
   releaseYear: '',
-  genre: '',
+  genres: [],
   bpm: '',
   energy: null,
   rating: null,
@@ -58,7 +59,7 @@ function formFromSong(song: Song): FormState {
     album: song.album ?? '',
     duration: song.durationSeconds === null ? '' : formatDuration(song.durationSeconds),
     releaseYear: song.releaseYear === null ? '' : String(song.releaseYear),
-    genre: song.genre ?? '',
+    genres: song.genres,
     bpm: song.bpm === null ? '' : String(song.bpm),
     energy: song.energy,
     rating: song.rating,
@@ -80,7 +81,8 @@ function applyLookup(form: FormState, result: LookupResult): FormState {
     album: result.album ?? form.album,
     duration: result.durationSeconds === null ? form.duration : formatDuration(result.durationSeconds),
     releaseYear: result.releaseYear === null ? form.releaseYear : String(result.releaseYear),
-    genre: result.genre ?? form.genre,
+    // Ein Song kann mehrere Genres haben: Das Genre des Treffers kommt dazu, statt die Auswahl zu ersetzen.
+    genres: result.genre ? addGenre(form.genres, result.genre) : form.genres,
     appleMusicUrl: result.appleMusicUrl ?? form.appleMusicUrl,
     artworkUrl: result.artworkUrl ?? form.artworkUrl,
   };
@@ -122,7 +124,7 @@ function validate(form: FormState): { input: SongInput | null; errors: Errors } 
       album: textOrNull(form.album),
       durationSeconds: duration.seconds,
       releaseYear,
-      genre: textOrNull(form.genre),
+      genres: form.genres,
       bpm,
       energy: form.energy,
       rating: form.rating,
@@ -234,6 +236,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
 
   const categories = useCategories();
   const songs = useSongs();
+  const genreOptions = useMemo(() => distinctGenres(songs.data ?? []), [songs.data]);
   const queryClient = useQueryClient();
   const youtubeStatus = useYoutubeStatus();
   const youtubeSearch = useMutation({
@@ -401,20 +404,19 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 onChange={(event) => set('album', event.target.value)}
               />
             </Field>
-            <Field label="Genre" htmlFor={`${id}-genre`} error={errors.genre} className="span-3">
-              <input
+            <Field
+              label="Genres"
+              htmlFor={`${id}-genre`}
+              error={errors.genres}
+              hint="Mehrere möglich: aus der Liste wählen oder neu eintippen."
+              className="span-3"
+            >
+              <GenrePicker
                 id={`${id}-genre`}
-                className="input"
-                value={form.genre}
-                maxLength={100}
-                list={`${id}-genres`}
-                onChange={(event) => set('genre', event.target.value)}
+                value={form.genres}
+                options={genreOptions}
+                onChange={(genres) => set('genres', genres)}
               />
-              <datalist id={`${id}-genres`}>
-                {distinctGenres(songs.data ?? []).map((genre) => (
-                  <option key={genre} value={genre} />
-                ))}
-              </datalist>
             </Field>
             <Field label="Dauer" htmlFor={`${id}-duration`} error={errors.duration} hint="Minuten:Sekunden" className="span-2">
               <input

@@ -28,7 +28,7 @@ describe('songInputSchema', () => {
       album: null,
       durationSeconds: null,
       releaseYear: null,
-      genre: null,
+      genres: [],
       bpm: null,
       energy: null,
       rating: null,
@@ -46,13 +46,13 @@ describe('songInputSchema', () => {
       title: 'Hurt',
       artist: 'Johnny Cash',
       album: '   ',
-      genre: '',
+      genres: ['', '  '],
       notes: null,
       rating: null,
       youtubeUrl: ' ',
     });
     assert.equal(song.album, null);
-    assert.equal(song.genre, null);
+    assert.deepEqual(song.genres, []);
     assert.equal(song.notes, null);
     assert.equal(song.rating, null);
     assert.equal(song.youtubeUrl, null);
@@ -63,6 +63,24 @@ describe('songInputSchema', () => {
     assert.deepEqual(song.categoryIds, [3, 1]);
     assert.equal('id' in song, false);
     assert.equal('foo' in song, false);
+  });
+
+  test('Genres werden getrimmt und jede Schreibweise nur einmal übernommen', () => {
+    const song = songInputSchema.parse({
+      title: 'a',
+      artist: 'b',
+      genres: [' Pop ', 'Dance', 'pop', 'Hip-Hop/Rap', 'DANCE'],
+    });
+    assert.deepEqual(song.genres, ['Pop', 'Dance', 'Hip-Hop/Rap']);
+  });
+
+  test('zu viele oder zu lange Genres werden abgelehnt', () => {
+    const many = Array.from({ length: 21 }, (_, index) => `Genre ${index}`);
+    assert.deepEqual(messagesOf(() => songInputSchema.parse({ title: 'a', artist: 'b', genres: many })), [
+      'Bitte höchstens 20 Genres angeben.',
+    ]);
+    assert.equal(messagesOf(() => songInputSchema.parse({ title: 'a', artist: 'b', genres: ['x'.repeat(101)] })).length, 1);
+    assert.equal(messagesOf(() => songInputSchema.parse({ title: 'a', artist: 'b', genres: 'Pop' })).length, 1);
   });
 
   test('fehlender Titel oder Interpret wird mit deutscher Meldung abgelehnt', () => {

@@ -5,6 +5,9 @@
 
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
@@ -12,7 +15,7 @@ import pg from 'pg';
 import { createApp } from './app.ts';
 import { config } from './config.ts';
 import { createPool, type Pool } from './db.ts';
-import { migrate } from './migrate.ts';
+import { MIGRATIONS_DIR, migrate } from './migrate.ts';
 import { YoutubeService } from './services/youtube.ts';
 import { FakeGoogle } from './testing/fakeGoogle.ts';
 
@@ -123,8 +126,47 @@ describe('API', { skip: unavailable ?? false }, () => {
     test('die Migrationen legen Startkategorien an und laufen nur einmal', async () => {
       assert.ok(seededCategories.includes('melancholisch'));
       assert.ok(seededCategories.includes('aufpushend'));
-      assert.equal(seededCategories.length, 8);
+      assert.ok(seededCategories.includes('Sport'));
+      assert.ok(seededCategories.includes('Einschlafen'));
+      assert.equal(seededCategories.length, 20);
+      assert.equal(new Set(seededCategories.map((name) => name.toLowerCase())).size, 20);
       assert.deepEqual(await migrate(pool), []);
+    });
+
+    test('ein bestehender Bestand behält beim Update seine Genres und eigenen Kategorien', async () => {
+      // Stand vor den Migrationen für mehrere Genres und weitere Kategorien nachbauen.
+      const name = `${databaseName}_update`;
+      const oldDir = await mkdtemp(join(tmpdir(), 'musik-migrationen-'));
+      await runAsAdmin(`CREATE DATABASE ${name}`);
+      const oldPool = createPool({ ...config.db, database: name });
+      try {
+        for (const file of await readdir(MIGRATIONS_DIR)) {
+          if (file < '004') await copyFile(join(MIGRATIONS_DIR, file), join(oldDir, file));
+        }
+        await migrate(oldPool, oldDir);
+        await oldPool.query(`INSERT INTO songs (title, artist, genre) VALUES ('a', 'x', ' Pop '), ('b', 'x', '  '), ('c', 'x', NULL)`);
+        await oldPool.query(`INSERT INTO categories (name, color) VALUES ('sommer', '#123456')`);
+
+        const applied = await migrate(oldPool);
+        assert.ok(applied.includes('004_mehrere_genres.sql'));
+        assert.ok(applied.includes('005_weitere_kategorien.sql'));
+
+        const songs = await oldPool.query('SELECT title, genres FROM songs ORDER BY title');
+        assert.deepEqual(songs.rows, [
+          { title: 'a', genres: ['Pop'] },
+          { title: 'b', genres: [] },
+          { title: 'c', genres: [] },
+        ]);
+        // Die selbst angelegte Kategorie gleichen Namens bleibt unverändert und einzeln.
+        const summer = await oldPool.query(`SELECT name, color FROM categories WHERE lower(name) = 'sommer'`);
+        assert.deepEqual(summer.rows, [{ name: 'sommer', color: '#123456' }]);
+        const count = await oldPool.query<{ count: number }>('SELECT count(*)::integer AS count FROM categories');
+        assert.equal(count.rows[0]!.count, 20);
+      } finally {
+        await oldPool.end();
+        await runAsAdmin(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+        await rm(oldDir, { recursive: true, force: true });
+      }
     });
 
     test('GET /api/health meldet Bereitschaft', async () => {
@@ -154,7 +196,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         album: 'American IV',
         durationSeconds: 217,
         releaseYear: 2002,
-        genre: 'Country',
+        genres: ['Country', ' Folk ', 'country'],
         bpm: 90,
         energy: 2,
         rating: 5,
@@ -167,6 +209,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       });
 
       assert.equal(created.title, 'Hurt');
+      assert.deepEqual(created.genres, ['Country', 'Folk']);
       assert.deepEqual(created.categoryIds, [CALM, SUMMER]);
       assert.equal(created.durationSeconds, 217);
       assert.equal(created.rating, 5);
@@ -458,7 +501,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         artist: 'ABBA',
         durationSeconds: 100,
         releaseYear: 1979,
-        genre: 'Pop',
+        genres: ['Pop'],
         rating: 5,
         energy: 4,
         bpm: 120,
@@ -470,13 +513,13 @@ describe('API', { skip: unavailable ?? false }, () => {
         artist: 'abba',
         durationSeconds: 200,
         releaseYear: 1981,
-        genre: 'pop',
+        genres: ['pop', 'Dance'],
         rating: 4,
         energy: 2,
         bpm: 100,
         categoryIds: [CALM, SUMMER],
       });
-      await createSong({ title: 'c', artist: 'Toto', durationSeconds: 450, releaseYear: 1982, genre: 'Rock', categoryIds: [CALM] });
+      await createSong({ title: 'c', artist: 'Toto', durationSeconds: 450, releaseYear: 1982, genres: ['Rock'], categoryIds: [CALM] });
       await createSong({ title: 'd', artist: 'Unbekannt' });
       await api('POST', '/api/playlists', { name: 'Mix' });
 
@@ -519,6 +562,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       ]);
       assert.deepEqual(body.byGenre, [
         { genre: 'Pop', songCount: 2 },
+        { genre: 'Dance', songCount: 1 },
         { genre: 'Rock', songCount: 1 },
         { genre: null, songCount: 1 },
       ]);

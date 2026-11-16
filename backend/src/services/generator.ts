@@ -10,7 +10,7 @@ export interface GeneratorSong {
   artist: string;
   durationSeconds: number | null;
   releaseYear: number | null;
-  genre: string | null;
+  genres: string[];
   energy: number | null;
   rating: number | null;
   categoryIds: number[];
@@ -101,7 +101,8 @@ export function buildFilter(criteria: GeneratorCriteria): (song: GeneratorSong) 
       const hits = countHits(song, wanted);
       if (criteria.matchMode === 'all' ? hits < wanted.size : hits === 0) return false;
     }
-    if (genres.size > 0 && (song.genre === null || !genres.has(song.genre.trim().toLowerCase()))) return false;
+    // Ein Song passt, sobald eines seiner Genres gewünscht ist.
+    if (genres.size > 0 && !song.genres.some((genre) => genres.has(genre.trim().toLowerCase()))) return false;
     if (criteria.minRating !== null && (song.rating === null || song.rating < criteria.minRating)) return false;
     if (!withinRange(song.energy, energyMin, energyMax)) return false;
     if (!withinRange(song.releaseYear, yearFrom, yearTo)) return false;

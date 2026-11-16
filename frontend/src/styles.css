@@ -768,6 +768,174 @@ a {
   background: var(--hover);
 }
 
+/* ------------------------------------------- Genre-Auswahl (mehrere Genres) */
+
+.genre-picker {
+  position: relative;
+}
+
+/* Sieht aus wie ein Eingabefeld; darin stehen die gewählten Genres als Chips. */
+.genre-picker-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  padding: 3px 3px 3px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  cursor: text;
+}
+
+.genre-picker-control:has(.genre-picker-input:focus-visible) {
+  border-color: var(--focus);
+  outline: 2px solid var(--focus);
+}
+
+.field-invalid .genre-picker-control {
+  border-color: var(--danger);
+}
+
+/* Chips und Eingabe brechen um; der Pfeil zum Aufklappen bleibt rechts stehen. */
+.genre-picker-values {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.genre-picker-input {
+  flex: 1 1 10ch;
+  min-width: 10ch;
+  height: 28px;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+}
+
+.genre-picker-input::placeholder {
+  color: var(--text-muted);
+}
+
+.genre-picker-input:focus-visible {
+  outline: none;
+}
+
+.genre-chip {
+  --chip-color: var(--accent);
+  gap: 3px;
+  height: 26px;
+  padding-right: 3px;
+  font-size: 13px;
+}
+
+.genre-chip-remove,
+.genre-picker-toggle {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.genre-chip-remove {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.genre-picker-toggle {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.genre-chip-remove:hover,
+.genre-picker-toggle:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.genre-picker-toggle svg {
+  transition: transform 0.15s;
+}
+
+.genre-picker-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.genre-picker-popup {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 260px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.genre-picker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.genre-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.genre-option-active {
+  background: var(--hover);
+}
+
+.genre-option-icon {
+  flex: none;
+  color: var(--accent-text);
+}
+
+.genre-option-check {
+  visibility: hidden;
+}
+
+.genre-option[aria-selected='true'] {
+  font-weight: 600;
+}
+
+.genre-option[aria-selected='true'] .genre-option-check {
+  visibility: visible;
+}
+
+.genre-option-new {
+  color: var(--accent-text);
+}
+
+.genre-picker-empty {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .swatches {
   display: flex;
   flex-wrap: wrap;
