@@ -170,6 +170,13 @@ export const lookupQuerySchema = z.object({
     .max(200),
 });
 
+export const bpmLookupQuerySchema = z.object({
+  title: z.string({ error: 'Bitte einen Titel angeben.' }).trim().min(1, 'Bitte einen Titel angeben.').max(300),
+  artist: z.string({ error: 'Bitte einen Interpreten angeben.' }).trim().min(1, 'Bitte einen Interpreten angeben.').max(300),
+  /** Dauer in Sekunden; hilft, unter mehreren Fassungen die richtige zu finden. */
+  duration: z.coerce.number().int().min(1).max(86_399).optional(),
+});
+
 // --- YouTube ---------------------------------------------------------------
 
 const videoIdSchema = z.string().regex(VIDEO_ID_PATTERN, 'Ungültige YouTube-Video-ID.');

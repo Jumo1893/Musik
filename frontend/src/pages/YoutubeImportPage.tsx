@@ -124,6 +124,8 @@ function ImportResultCard({ result, preview }: { result: YoutubeImportResult; pr
       <p className="field-hint">
         Titel, Interpret und Dauer stammen von YouTube. Album, Genre und Jahr ergänzt die Online-Suche im Song-Dialog, die
         Stimmung die Kategorien.
+        {result.createdSongs > 0 &&
+          ' Das Tempo (BPM) der neuen Songs wird gerade im Hintergrund auf songbpm.com nachgeschlagen und erscheint nach und nach in der Songliste.'}
       </p>
       <div className="export-actions">
         {result.playlistId !== null && (

@@ -7,11 +7,14 @@ import { playlistsRouter } from './routes/playlists.ts';
 import { songsRouter } from './routes/songs.ts';
 import { statsRouter } from './routes/stats.ts';
 import { youtubeRouter } from './routes/youtube.ts';
+import type { SongBpmService } from './services/songBpm.ts';
 import type { YoutubeService } from './services/youtube.ts';
 
 export interface AppOptions {
   itunesCountry: string;
   youtube: YoutubeService;
+  /** Tempo-Suche auf songbpm.com */
+  songBpm: SongBpmService;
   /** Erlaubte Host-Namen; null: keine Prüfung */
   allowedHosts: readonly string[] | null;
 }
@@ -53,8 +56,8 @@ export function createApp(pool: Pool, options: AppOptions): Express {
   app.use('/api/categories', categoriesRouter(pool));
   app.use('/api/playlists', playlistsRouter(pool, options.youtube));
   app.use('/api/stats', statsRouter(pool));
-  app.use('/api/lookup', lookupRouter(options.itunesCountry));
-  app.use('/api/youtube', youtubeRouter(pool, options.youtube));
+  app.use('/api/lookup', lookupRouter(options.itunesCountry, options.songBpm));
+  app.use('/api/youtube', youtubeRouter(pool, options.youtube, options.songBpm));
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Diesen API-Endpunkt gibt es nicht.' });

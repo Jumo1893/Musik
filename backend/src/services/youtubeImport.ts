@@ -22,7 +22,11 @@ async function linkIfMissing(db: Queryable, song: SongLinkRow, videoId: string):
   return true;
 }
 
-export async function importFromYoutube(db: Queryable, input: YoutubeImportInput): Promise<YoutubeImportResult> {
+/** Ergebnis für die Oberfläche, dazu die IDs der neu angelegten Songs für die weitere Verarbeitung. */
+export async function importFromYoutube(
+  db: Queryable,
+  input: YoutubeImportInput,
+): Promise<YoutubeImportResult & { createdSongIds: number[] }> {
   const songIds: number[] = [];
   // Mehrere Videos können zum selben Song gehören (Musikvideo und Audio-Version):
   // Gezählt wird jeder Song nur einmal, und zwar nach dem, was mit ihm zuerst passiert ist.
@@ -98,7 +102,7 @@ export async function importFromYoutube(db: Queryable, input: YoutubeImportInput
     });
     result.playlistId = playlist.id;
   }
-  return result;
+  return { ...result, createdSongIds: [...created] };
 }
 
 /** Speichert gefundene Videos als YouTube-Link der Songs. Gibt die Zahl der geänderten Songs zurück. */

@@ -16,6 +16,7 @@ import { createApp } from './app.ts';
 import { config } from './config.ts';
 import { createPool, type Pool } from './db.ts';
 import { MIGRATIONS_DIR, migrate } from './migrate.ts';
+import { SongBpmService } from './services/songBpm.ts';
 import { YoutubeService } from './services/youtube.ts';
 import { FakeGoogle } from './testing/fakeGoogle.ts';
 
@@ -59,6 +60,18 @@ describe('API', { skip: unavailable ?? false }, () => {
   let seededCategories: string[];
   /** Nachgebautes Google; wird vor jedem Test neu angelegt. */
   let fake = new FakeGoogle();
+  /** Nachgebautes songbpm.com: kennt zwei Songs, die gestellten Suchen werden mitgeschrieben. */
+  const bpmSearches: string[] = [];
+  const songBpm = new SongBpmService({
+    backgroundDelayMs: 0,
+    fetchFn: (async (_input: unknown, init?: RequestInit) => {
+      bpmSearches.push(new URLSearchParams(String(init?.body)).get('query') ?? '');
+      const card = (artist: string, title: string, bpm: number) =>
+        `<a href="/@x/${bpm}"><p>${artist}</p><p>${title}</p><span>Key</span><span>A</span>` +
+        `<span>Duration</span><span>3:33</span><span>BPM</span><span>${bpm}</span></a>`;
+      return new Response(card('Rick Astley', 'Never Gonna Give You Up', 113) + card('Ed Sheeran', 'Shape of You', 96));
+    }) as typeof fetch,
+  });
   const REDIRECT_URI = 'http://localhost:8090/api/youtube/callback';
 
   // Kategorien, die vor jedem Test frisch angelegt werden (IDs 1 bis 3).
@@ -99,7 +112,12 @@ describe('API', { skip: unavailable ?? false }, () => {
       regionCode: 'DE',
       fetchFn: (input, init) => fake.fetch(input, init),
     });
-    const app = createApp(pool, { itunesCountry: 'de', youtube, allowedHosts: ['localhost', '127.0.0.1', '[::1]'] });
+    const app = createApp(pool, {
+      itunesCountry: 'de',
+      youtube,
+      songBpm,
+      allowedHosts: ['localhost', '127.0.0.1', '[::1]'],
+    });
     server = app.listen(0, '127.0.0.1');
     await once(server, 'listening');
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -113,6 +131,9 @@ describe('API', { skip: unavailable ?? false }, () => {
   });
 
   beforeEach(async () => {
+    // Nachträge im Hintergrund dürfen nicht in den nächsten Test hineinlaufen.
+    await songBpm.idle();
+    bpmSearches.length = 0;
     await pool.query(
       'TRUNCATE songs, playlists, categories, youtube_account, youtube_quota_usage RESTART IDENTITY CASCADE',
     );
@@ -596,6 +617,32 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(response.body.fields.term, 'Bitte einen Suchbegriff angeben.');
       assert.equal((await api('GET', '/api/lookup/itunes?term=a')).status, 400);
     });
+
+    test('findet das Tempo eines Songs auf songbpm.com', async () => {
+      const found = await api('GET', `/api/lookup/bpm?title=${encodeURIComponent('Shape of You')}&artist=Ed+Sheeran&duration=233`);
+      assert.equal(found.status, 200);
+      assert.equal(found.body.match.bpm, 96);
+      assert.equal(found.body.match.url, 'https://songbpm.com/@x/96');
+
+      const unknown = await api('GET', '/api/lookup/bpm?title=Hurt&artist=Johnny+Cash');
+      assert.deepEqual(unknown, { status: 200, body: { match: null } });
+      assert.deepEqual(bpmSearches, ['Ed Sheeran Shape of You', 'Johnny Cash Hurt']);
+    });
+
+    test('verlangt für die Tempo-Suche Titel und Interpret', async () => {
+      const response = await api('GET', '/api/lookup/bpm?title=Hurt');
+      assert.equal(response.status, 400);
+      assert.equal(response.body.fields.artist, 'Bitte einen Interpreten angeben.');
+      assert.equal((await api('GET', '/api/lookup/bpm?title=Hurt&artist=Johnny+Cash&duration=0')).status, 400);
+      assert.deepEqual(bpmSearches, []);
+    });
+
+    test('ein von Hand angelegter Song bekommt kein Tempo untergeschoben', async () => {
+      const song = await createSong({ title: 'Shape of You', artist: 'Ed Sheeran', bpm: null });
+      await songBpm.idle();
+      assert.equal((await api('GET', `/api/songs/${song.id}`)).body.bpm, null);
+      assert.deepEqual(bpmSearches, []);
+    });
   });
 
   describe('YouTube', () => {
@@ -884,6 +931,17 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.deepEqual(byTitle.get('Hello').categoryIds, [], 'vorhandene Songs behalten ihre Kategorien');
       assert.equal(byTitle.get('Never Gonna Give You Up').artworkUrl, 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg');
       assert.equal(byTitle.get('Never Gonna Give You Up').durationSeconds, 213);
+
+      // Das Tempo der neu angelegten Songs wird im Hintergrund nachgetragen, vorhandene bleiben unberührt.
+      await songBpm.idle();
+      const afterwards = new Map<string, Json>(
+        ((await api('GET', '/api/songs')).body as Json[]).map((song) => [song.title, song.bpm]),
+      );
+      assert.equal(afterwards.get('Never Gonna Give You Up'), 113);
+      assert.equal(afterwards.get('Shape of You'), 96);
+      assert.equal(afterwards.get('Hello'), null);
+      // Gesucht wird nur für neue Songs (eine frühere Suche kann schon im Zwischenspeicher liegen).
+      assert.ok(!bpmSearches.some((search) => search.includes('Hello')), JSON.stringify(bpmSearches));
     });
 
     test('Importe ohne Playlist und ungültige Importe', async () => {

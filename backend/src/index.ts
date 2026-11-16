@@ -2,6 +2,7 @@ import { createApp } from './app.ts';
 import { config } from './config.ts';
 import { createPool, waitForDatabase } from './db.ts';
 import { migrate } from './migrate.ts';
+import { SongBpmService } from './services/songBpm.ts';
 import { YoutubeService } from './services/youtube.ts';
 
 const pool = createPool(config.db);
@@ -27,6 +28,7 @@ console.log(
 const app = createApp(pool, {
   itunesCountry: config.itunesCountry,
   youtube,
+  songBpm: new SongBpmService(),
   allowedHosts: config.allowedHosts,
 });
 const server = app.listen(config.port, () => {

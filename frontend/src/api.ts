@@ -2,6 +2,7 @@
 
 import type {
   AppConfig,
+  BpmMatch,
   YoutubeImportInput,
   YoutubeImportPreview,
   YoutubeImportResult,
@@ -143,4 +144,10 @@ export const api = {
   },
   lookup: (term: string, signal?: AbortSignal) =>
     request<LookupResult[]>('GET', `/lookup/itunes?term=${encodeURIComponent(term)}`, undefined, signal),
+  /** Tempo auf songbpm.com; match ist null, wenn der Song dort unbekannt ist. */
+  lookupBpm: (song: { title: string; artist: string; durationSeconds: number | null }, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ title: song.title, artist: song.artist });
+    if (song.durationSeconds) params.set('duration', String(song.durationSeconds));
+    return request<{ match: BpmMatch | null }>('GET', `/lookup/bpm?${params}`, undefined, signal);
+  },
 };

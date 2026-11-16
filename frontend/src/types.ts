@@ -103,6 +103,18 @@ export interface LookupResult {
   artworkUrl: string | null;
 }
 
+/** Tempo eines Songs laut songbpm.com, samt dem Eintrag, von dem es stammt. */
+export interface BpmMatch {
+  bpm: number;
+  /** Tonart, z. B. „A“ oder „C♯/D♭“ */
+  key: string | null;
+  title: string;
+  artist: string;
+  durationSeconds: number | null;
+  /** Seite des Songs auf songbpm.com */
+  url: string;
+}
+
 export interface Stats {
   totals: {
     songCount: number;

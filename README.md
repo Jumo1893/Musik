@@ -8,6 +8,7 @@ Gespeichert werden nur Angaben und Links zu den Songs – **keine Audiodateien**
 
 - **Songs** mit Titel, Interpret, Album, Dauer, Jahr, Genres, BPM, Bewertung (1–5 Sterne), Energie (1–5), Notizen und Cover. Ein Song kann mehrere Genres haben; die schon vorhandenen stehen im Song-Dialog in einer aufklappbaren Liste, neue lassen sich einfach eintippen.
   Die Online-Suche holt die Angaben samt Cover und Apple-Music-Link aus dem iTunes-Katalog, sodass meist nur noch Kategorien und Bewertung fehlen.
+  Das Tempo (BPM) schlägt der Song-Dialog automatisch auf [songbpm.com](https://songbpm.com) nach, sobald Titel und Interpret feststehen – übernommen wird nur ein Treffer, bei dem beides passt, und nur in ein leeres Feld. Bei Songs aus einem YouTube-Import wird es im Hintergrund nachgetragen.
 - **Kategorien** wie „melancholisch“ oder „aufpushend“: frei anlegbar, farbig, beliebig viele pro Song. 20 Kategorien sind als Startpunkt angelegt – Stimmungen wie „verträumt“ oder „episch“ und Anlässe wie „Sport“, „Roadtrip“ oder „Einschlafen“.
 - **Links zu Apple Music, YouTube und YouTube Music** an jedem Song. Ist ein Link gespeichert, führt der Knopf direkt zum Song, sonst zur Suche auf der Plattform. Ein YouTube-Link genügt auch für YouTube Music.
 - **Auswertung**: Kennzahlen und Diagramme zu Kategorien, Interpreten, Genres, Jahrzehnten, Songlänge, Bewertung und Energie, häufige Kategorie-Kombinationen und ein Überblick, wo noch Angaben fehlen.
@@ -162,7 +163,7 @@ docker-compose.fake-google.yml   Zusatz: Google-Nachbau zum Ausprobieren der You
 backend/                         REST-API: Node.js, Express, TypeScript
   migrations/                    SQL-Dateien für das Datenbankschema
   src/routes/                    Endpunkte
-  src/services/                  Datenzugriff, Playlist-Generator, iTunes-Suche, YouTube-Anbindung
+  src/services/                  Datenzugriff, Playlist-Generator, iTunes- und BPM-Suche, YouTube-Anbindung
   src/testing/                   Google-Nachbau für Tests
 frontend/                        Weboberfläche: React, TypeScript, Vite
   src/pages/                     Songs, Kategorien, Playlists, Generator, Auswertung, YouTube
@@ -244,6 +245,7 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 | `POST`, `DELETE /api/playlists/:id/youtube` | Playlist ins YouTube-Konto übertragen (läuft im Hintergrund) bzw. Verknüpfung lösen |
 | `GET /api/stats` | Kennzahlen für die Auswertung |
 | `GET /api/lookup/itunes?term=…` | Songsuche im iTunes-Katalog |
+| `GET /api/lookup/bpm?title=…&artist=…&duration=…` | Tempo auf songbpm.com (`{ "match": null }`, wenn unbekannt) |
 | `GET /api/youtube/status` | Verbindung und Kontingent |
 | `GET /api/youtube/connect` · `GET /api/youtube/callback` | Anmeldung bei Google (im Browser) |
 | `POST /api/youtube/disconnect` | Verbindung trennen und Zugang widerrufen |
@@ -256,6 +258,7 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 ## Was nach außen geht
 
 - Die Online-Suche schickt den eingetippten Suchbegriff an die iTunes Search API von Apple.
+- Für das Tempo schickt das Backend Interpret und Titel an die Suche von songbpm.com – beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs. songbpm.com hat keine offizielle Schnittstelle; ausgewertet wird die Ergebnisseite. Ändert die Seite ihren Aufbau, findet die App kein Tempo mehr, alles andere funktioniert weiter.
 - Cover werden beim Anzeigen direkt von der gespeicherten Bildadresse geladen (bei Treffern aus der Online-Suche von Apple, bei übernommenen Videos von YouTube).
 - Ein Klick auf einen Plattform-Link öffnet die jeweilige Seite in einem neuen Tab.
 - Mit verbundenem YouTube-Konto spricht das Backend mit Google: Anmeldung, Lesen der eigenen Playlists, Suchen von Videos (Interpret und Titel des Songs) und Anlegen bzw. Ändern der übertragenen Playlists. Die Zugangsdaten liegen in der eigenen Datenbank und verlassen den Rechner nur in Richtung Google.

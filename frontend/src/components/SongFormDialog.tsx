@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage } from '../api.ts';
@@ -12,6 +12,7 @@ import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
 import { OnlineSearch } from './OnlineSearch.tsx';
 import { Artwork, ChipToggle, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput } from './ui.tsx';
+import { useBpmLookup } from './useBpmLookup.ts';
 
 /** Zustand des Formulars: Texte so, wie sie in den Feldern stehen. */
 interface FormState {
@@ -243,6 +244,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
     mutationFn: (hints: Parameters<typeof api.youtube.search>[0]) => api.youtube.search(hints),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['youtube', 'status'] }),
   });
+  const bpmLookup = useBpmLookup();
   const saveSong = useSaveSong();
   const deleteSong = useDeleteSong();
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -288,6 +290,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
           }
           setForm(EMPTY_FORM);
           setSearchKey((key) => key + 1);
+          bpmLookup.reset();
           setSavedNote(`„${saved.title}“ ist gespeichert.`);
         },
         onError: (err) => {
@@ -305,6 +308,59 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
   }
 
   const query = `${form.artist} ${form.title}`.trim();
+
+  // Wert im BPM-Feld, der aus der Tempo-Suche stammt und noch nicht verändert wurde.
+  const bpmFromLookup = bpmLookup.state.status === 'found' ? String(bpmLookup.state.match.bpm) : null;
+
+  /**
+   * Schlägt das Tempo auf songbpm.com nach, sobald Titel und Interpret feststehen. Ein selbst
+   * eingetragenes Tempo bleibt unangetastet; nur ein leeres Feld oder der Wert einer früheren
+   * Suche wird ersetzt.
+   */
+  function lookUpBpm(next: FormState, force = false) {
+    const title = next.title.trim();
+    const artist = next.artist.trim();
+    if (!title || !artist) return;
+    if (next.bpm.trim() !== '' && next.bpm !== bpmFromLookup) return;
+
+    const duration = parseDuration(next.duration);
+    const started = bpmLookup.search(
+      { title, artist, durationSeconds: duration.ok ? duration.seconds : null },
+      (match) => setForm((current) => (current.bpm.trim() === '' ? { ...current, bpm: String(match.bpm) } : current)),
+      force,
+    );
+    // Der Wert der vorigen Suche gehört zu einem anderen Song und muss weichen.
+    if (started && bpmFromLookup !== null) {
+      setForm((current) => (current.bpm === bpmFromLookup ? { ...current, bpm: '' } : current));
+    }
+  }
+
+  const canSearchBpm = form.bpm.trim() === '' && form.title.trim() !== '' && form.artist.trim() !== '';
+  let bpmHint: ReactNode = 'Tempo, falls bekannt';
+  if (bpmLookup.state.status === 'searching') {
+    bpmHint = <span role="status">Suche auf songbpm.com …</span>;
+  } else if (bpmLookup.state.status === 'found' && form.bpm === bpmFromLookup) {
+    const { match } = bpmLookup.state;
+    bpmHint = (
+      <span role="status">
+        Laut{' '}
+        <a href={match.url} target="_blank" rel="noopener noreferrer" title={`Treffer: ${match.artist} – ${match.title}`}>
+          songbpm.com
+        </a>
+      </span>
+    );
+  } else if (canSearchBpm && bpmLookup.state.status === 'notFound') {
+    bpmHint = <span role="status">Auf songbpm.com nicht gefunden</span>;
+  } else if (canSearchBpm) {
+    bpmHint = (
+      <span role={bpmLookup.state.status === 'error' ? 'alert' : undefined}>
+        {bpmLookup.state.status === 'error' && 'songbpm.com nicht erreichbar. '}
+        <button type="button" className="link-button" onClick={() => lookUpBpm(form, true)}>
+          {bpmLookup.state.status === 'error' ? 'Nochmal versuchen' : 'Auf songbpm.com suchen'}
+        </button>
+      </span>
+    );
+  }
 
   // Mit verbundenem YouTube-Konto sucht der Knopf neben dem YouTube-Feld direkt in der App.
   const youtubeReady = Boolean(youtubeStatus.data?.configured && youtubeStatus.data.connected && !youtubeStatus.data.expired);
@@ -369,6 +425,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
             autoFocus={!song}
             onPick={(result) => {
               setForm((current) => applyLookup(current, result));
+              lookUpBpm(applyLookup(form, result));
               setErrors({});
               setFormError(null);
               setSavedNote(null);
@@ -384,6 +441,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 maxLength={300}
                 data-autofocus={song ? true : undefined}
                 onChange={(event) => set('title', event.target.value)}
+                onBlur={() => lookUpBpm(form)}
               />
             </Field>
             <Field label="Interpret" htmlFor={`${id}-artist`} error={errors.artist} className="span-3">
@@ -393,6 +451,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 value={form.artist}
                 maxLength={300}
                 onChange={(event) => set('artist', event.target.value)}
+                onBlur={() => lookUpBpm(form)}
               />
             </Field>
             <Field label="Album" htmlFor={`${id}-album`} error={errors.album} className="span-3">
@@ -439,7 +498,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 onChange={(event) => set('releaseYear', event.target.value)}
               />
             </Field>
-            <Field label="BPM" htmlFor={`${id}-bpm`} error={errors.bpm} hint="Tempo, falls bekannt" className="span-2">
+            <Field label="BPM" htmlFor={`${id}-bpm`} error={errors.bpm} hint={bpmHint} className="span-2">
               <input
                 id={`${id}-bpm`}
                 className="input"
