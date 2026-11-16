@@ -244,8 +244,9 @@ a {
   }
 }
 
-/* Handy: Navigation als vier gleich breite Felder mit Symbol über dem Wort */
-@media (max-width: 560px) {
+/* Schmale Fenster und Handy: Navigation als gleich breite Felder mit Symbol über dem Wort,
+   damit alle Punkte ohne Scrollen in eine Zeile passen. */
+@media (max-width: 860px) {
   .sidebar {
     gap: 6px;
     padding: 8px 10px;
@@ -258,6 +259,7 @@ a {
 
   .nav {
     flex: 1;
+    max-width: 640px;
   }
 
   .nav-link {
@@ -265,6 +267,12 @@ a {
     flex-direction: column;
     gap: 2px;
     padding: 6px 2px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .nav-link {
     font-size: 11.5px;
   }
 }
@@ -2089,4 +2097,480 @@ a {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------- YouTube */
+
+.youtube-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 980px;
+}
+
+.youtube-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+}
+
+.youtube-card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.youtube-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.youtube-card p {
+  margin: 0;
+}
+
+.youtube-note {
+  margin: 0;
+}
+
+.success-note,
+.warning-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+}
+
+.success-note {
+  border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+}
+
+.warning-note {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--star) 45%, transparent);
+  background: color-mix(in srgb, var(--star) 12%, transparent);
+}
+
+.warning-note svg,
+.form-success svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.form-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/* Anleitung zum Einrichten */
+
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.setup-steps li {
+  padding-left: 4px;
+}
+
+.setup-steps .input-with-action {
+  margin-top: 6px;
+  max-width: 620px;
+}
+
+.copy-input {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 13px;
+}
+
+code,
+.code-block {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 13px;
+}
+
+code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+}
+
+.code-block {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  white-space: pre-wrap;
+}
+
+/* Verbundenes Konto */
+
+.channel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.channel .artwork {
+  border-radius: 50%;
+}
+
+.channel-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.channel-action {
+  margin-left: auto;
+}
+
+.quota .meter-row {
+  grid-template-columns: 7rem minmax(60px, 1fr) 10.5rem;
+}
+
+/* Fortschritt */
+
+.progress {
+  display: block;
+  flex: 1 1 160px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--meter-track);
+  overflow: hidden;
+}
+
+.progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--series-1);
+  transition: width 0.3s;
+}
+
+.finder-progress,
+.job-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-size: 13.5px;
+}
+
+/* Fehlende Links finden */
+
+.finder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.finder p {
+  margin: 0;
+}
+
+.finder-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-large);
+  list-style: none;
+}
+
+.finder-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 0.9fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.finder-row:last-child {
+  border-bottom: 0;
+}
+
+.finder-row-accepted {
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+}
+
+.finder-check {
+  width: 18px;
+  height: 18px;
+}
+
+.finder-song,
+.finder-video {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.finder-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.finder-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.finder-video {
+  color: inherit;
+  text-decoration: none;
+}
+
+.finder-video:hover .finder-video-title {
+  text-decoration: underline;
+}
+
+.finder-video-title {
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finder-select {
+  height: 30px;
+  font-size: 13px;
+}
+
+.finder-footer,
+.import-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+}
+
+.finder-footer .field-hint {
+  flex: 1 1 260px;
+}
+
+@media (max-width: 720px) {
+  .finder-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .finder-choice {
+    grid-column: 2;
+  }
+}
+
+/* Playlist übertragen */
+
+.youtube-export {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.youtube-export-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.youtube-export-status svg {
+  color: var(--success);
+}
+
+.youtube-export .link-button {
+  align-self: center;
+  font-size: 13.5px;
+}
+
+.export-card .youtube-note {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.job-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.job-summary p {
+  margin: 0;
+}
+
+.compact-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}
+
+/* Trefferliste der YouTube-Suche im Song-Dialog */
+
+.youtube-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: -4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-large);
+  background: var(--surface-sunken);
+}
+
+/* Playlists von YouTube übernehmen */
+
+.import-options .field {
+  max-width: 560px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+}
+
+.import-summary {
+  margin-top: 14px;
+}
+
+.import-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.import-row {
+  display: grid;
+  grid-template-columns: 26px 44px minmax(0, 1fr) 56px 170px;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.import-row:last-child {
+  border-bottom: 0;
+}
+
+.import-row.import-skip > :not(.import-action) {
+  opacity: 0.55;
+}
+
+.import-position {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.import-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.import-main .song-sub a {
+  color: inherit;
+}
+
+.import-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.import-fields .input {
+  height: 32px;
+  font-size: 14px;
+}
+
+.input-invalid {
+  border-color: var(--danger);
+}
+
+.import-link,
+.import-skip {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-action {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.import-action .input {
+  height: 32px;
+  font-size: 13.5px;
+}
+
+.import-note {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.import-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 12px 0;
+  background: linear-gradient(to top, var(--page) 70%, transparent);
+}
+
+@media (max-width: 860px) {
+  .import-row {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+  }
+
+  .import-position {
+    display: none;
+  }
+
+  .import-action {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .import-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

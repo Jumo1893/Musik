@@ -36,6 +36,13 @@ services:
       PGUSER: ${POSTGRES_USER:-musik}
       PGPASSWORD: ${POSTGRES_PASSWORD:-musik}
       ITUNES_COUNTRY: ${ITUNES_COUNTRY:-de}
+      # Adresse, unter der der Browser die App erreicht. Daraus ergibt sich die Rücksprungadresse
+      # für die Anmeldung bei Google: <APP_URL>/api/youtube/callback
+      APP_URL: ${APP_URL:-http://localhost:${WEB_PORT:-8090}}
+      WEB_BIND: ${WEB_BIND:-127.0.0.1}
+      # YouTube-Anbindung (optional), Anleitung im README
+      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID:-}
+      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET:-}
     depends_on:
       db:
         condition: service_healthy

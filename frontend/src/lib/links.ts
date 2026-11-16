@@ -90,6 +90,10 @@ export function streamingLinks(song: SongLinks, storefront?: string): StreamingL
   }));
 }
 
+export function youtubeVideoUrl(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
 /** So viele Videos nimmt YouTube in einer spontanen Wiedergabeliste höchstens an. */
 export const YOUTUBE_QUEUE_LIMIT = 50;
 

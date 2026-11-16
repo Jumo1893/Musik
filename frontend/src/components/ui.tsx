@@ -185,6 +185,23 @@ export function ScaleInput({ value, onChange, labels, variant, groupLabel }: Sca
 export const RATING_LABELS = ['geht so', 'ganz gut', 'gut', 'sehr gut', 'Lieblingssong'] as const;
 export const ENERGY_LABELS = ['sehr ruhig', 'ruhig', 'mittel', 'energiegeladen', 'sehr energiegeladen'] as const;
 
+/** Fortschrittsbalken für längere Vorgänge. */
+export function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
+  const share = max > 0 ? Math.min(1, value / max) : 0;
+  return (
+    <span
+      className="progress"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={value}
+    >
+      <span className="progress-fill" style={{ width: `${share * 100}%` }} />
+    </span>
+  );
+}
+
 /** Cover eines Songs. Gezeigt wird nur ein Bild von der gespeicherten Adresse, nichts wird kopiert. */
 export function Artwork({ url, size = 40 }: { url: string | null; size?: number }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);

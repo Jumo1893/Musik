@@ -5,11 +5,14 @@ import * as z from 'zod';
 /** Fehler, der dem Client mit passendem Statuscode und deutscher Meldung gezeigt wird. */
 export class HttpError extends Error {
   readonly status: number;
+  /** Maschinenlesbarer Grund, z. B. „youtube_reconnect“, damit die Oberfläche passend reagieren kann. */
+  readonly code: string | undefined;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -34,6 +37,9 @@ function fromDatabaseError(err: pg.DatabaseError): HttpError | null {
       }
       if (err.constraint === 'categories_unique_name') {
         return new HttpError(409, 'Eine Kategorie mit diesem Namen gibt es schon.');
+      }
+      if (err.constraint === 'playlists_unique_youtube_playlist') {
+        return new HttpError(409, 'Diese YouTube-Playlist ist schon mit einer anderen Playlist verknüpft.');
       }
       return new HttpError(409, 'Diesen Eintrag gibt es schon.');
     case '23503': // foreign_key_violation
@@ -70,7 +76,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   }
 
   if (err instanceof HttpError) {
-    res.status(err.status).json({ error: err.message });
+    res.status(err.status).json(err.code ? { error: err.message, code: err.code } : { error: err.message });
     return;
   }
 

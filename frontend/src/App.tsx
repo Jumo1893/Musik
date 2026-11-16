@@ -7,6 +7,8 @@ import { PlaylistPage } from './pages/PlaylistPage.tsx';
 import { PlaylistsPage } from './pages/PlaylistsPage.tsx';
 import { SongsPage } from './pages/SongsPage.tsx';
 import { StatsPage } from './pages/StatsPage.tsx';
+import { YoutubeImportPage } from './pages/YoutubeImportPage.tsx';
+import { YoutubePage } from './pages/YoutubePage.tsx';
 
 function NotFoundPage() {
   return (
@@ -27,6 +29,8 @@ export function App() {
         <Route path="playlists/neu" element={<GeneratorPage />} />
         <Route path="playlists/:id" element={<PlaylistPage />} />
         <Route path="auswertung" element={<StatsPage />} />
+        <Route path="youtube" element={<YoutubePage />} />
+        <Route path="youtube/playlists/:id" element={<YoutubeImportPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

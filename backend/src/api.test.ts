@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import type { Server } from 'node:http';
+import { request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import pg from 'pg';
@@ -13,6 +13,8 @@ import { createApp } from './app.ts';
 import { config } from './config.ts';
 import { createPool, type Pool } from './db.ts';
 import { migrate } from './migrate.ts';
+import { YoutubeService } from './services/youtube.ts';
+import { FakeGoogle } from './testing/fakeGoogle.ts';
 
 const adminConfig = { ...config.db, database: 'postgres' };
 
@@ -52,6 +54,9 @@ describe('API', { skip: unavailable ?? false }, () => {
   let server: Server;
   let baseUrl: string;
   let seededCategories: string[];
+  /** Nachgebautes Google; wird vor jedem Test neu angelegt. */
+  let fake = new FakeGoogle();
+  const REDIRECT_URI = 'http://localhost:8090/api/youtube/callback';
 
   // Kategorien, die vor jedem Test frisch angelegt werden (IDs 1 bis 3).
   const CALM = 1;
@@ -82,7 +87,17 @@ describe('API', { skip: unavailable ?? false }, () => {
     const { rows } = await pool.query<{ name: string }>('SELECT name FROM categories ORDER BY id');
     seededCategories = rows.map((row) => row.name);
 
-    server = createApp(pool, { itunesCountry: 'de' }).listen(0, '127.0.0.1');
+    const youtube = new YoutubeService({
+      pool,
+      clientId: 'test-client',
+      clientSecret: 'test-secret',
+      redirectUri: REDIRECT_URI,
+      endpoints: fake.endpoints,
+      regionCode: 'DE',
+      fetchFn: (input, init) => fake.fetch(input, init),
+    });
+    const app = createApp(pool, { itunesCountry: 'de', youtube, allowedHosts: ['localhost', '127.0.0.1', '[::1]'] });
+    server = app.listen(0, '127.0.0.1');
     await once(server, 'listening');
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
@@ -95,7 +110,10 @@ describe('API', { skip: unavailable ?? false }, () => {
   });
 
   beforeEach(async () => {
-    await pool.query('TRUNCATE songs, playlists, categories RESTART IDENTITY CASCADE');
+    await pool.query(
+      'TRUNCATE songs, playlists, categories, youtube_account, youtube_quota_usage RESTART IDENTITY CASCADE',
+    );
+    fake = new FakeGoogle();
     await pool.query(
       `INSERT INTO categories (name, color) VALUES ('ruhig', '#2a78d6'), ('laut', '#eb6834'), ('Sommer', '#eda100')`,
     );
@@ -533,6 +551,471 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(response.status, 400);
       assert.equal(response.body.fields.term, 'Bitte einen Suchbegriff angeben.');
       assert.equal((await api('GET', '/api/lookup/itunes?term=a')).status, 400);
+    });
+  });
+
+  describe('YouTube', () => {
+    /** Ruft die API auf, ohne Weiterleitungen zu folgen, und liefert deren Ziel. */
+    async function redirectTarget(path: string): Promise<string> {
+      const response = await fetch(baseUrl + path, { redirect: 'manual' });
+      assert.equal(response.status, 302, `${path} sollte weiterleiten`);
+      return response.headers.get('location') ?? '';
+    }
+
+    async function startLogin(): Promise<string> {
+      return new URL(await redirectTarget('/api/youtube/connect')).searchParams.get('state') ?? '';
+    }
+
+    /** Vollständiger Ablauf: App → Google → zurück zur App. */
+    async function connect(): Promise<void> {
+      const state = await startLogin();
+      const target = await redirectTarget(`/api/youtube/callback?code=${fake.issueCode()}&state=${state}`);
+      assert.equal(target, '/youtube?verbunden=1');
+    }
+
+    async function waitForJob(id: string): Promise<Json> {
+      for (let attempt = 0; attempt < 200; attempt++) {
+        const job = await api('GET', `/api/youtube/jobs/${id}`);
+        assert.equal(job.status, 200);
+        if (job.body.status !== 'running') return job.body;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.fail('Die Übertragung wurde nicht fertig.');
+    }
+
+    test('ohne Verbindung meldet der Status, was zu tun ist', async () => {
+      const { status, body } = await api('GET', '/api/youtube/status');
+      assert.equal(status, 200);
+      assert.equal(body.configured, true);
+      assert.equal(body.connected, false);
+      assert.equal(body.redirectUri, REDIRECT_URI);
+      assert.deepEqual(
+        [body.quota.unitsUsed, body.quota.unitsLimit, body.quota.searchesUsed, body.quota.searchesLimit],
+        [0, 10_000, 0, 100],
+      );
+      assert.ok(Date.parse(body.quota.resetsAt) > Date.now());
+
+      const playlists = await api('GET', '/api/youtube/playlists');
+      assert.equal(playlists.status, 409);
+      assert.equal(playlists.body.code, 'youtube_not_connected');
+
+      const playlist = (await api('POST', '/api/playlists', { name: 'x' })).body;
+      const exported = await api('POST', `/api/playlists/${playlist.id}/youtube`, {});
+      assert.equal(exported.status, 409);
+      assert.equal(exported.body.code, 'youtube_not_connected');
+    });
+
+    test('ohne Zugangsdaten ist die Anbindung nicht eingerichtet', async () => {
+      const unconfigured = new YoutubeService({
+        pool,
+        clientId: null,
+        clientSecret: null,
+        redirectUri: REDIRECT_URI,
+        endpoints: fake.endpoints,
+        regionCode: 'DE',
+      });
+      assert.equal((await unconfigured.status()).configured, false);
+      assert.throws(() => unconfigured.createAuthorizationUrl(), /noch nicht eingerichtet/);
+    });
+
+    test('die Anmeldung schickt zu Google und verbindet nach dem Rücksprung', async () => {
+      const authUrl = new URL(await redirectTarget('/api/youtube/connect'));
+      assert.equal(authUrl.origin + authUrl.pathname, fake.endpoints.authUrl);
+      assert.equal(authUrl.searchParams.get('client_id'), 'test-client');
+      assert.equal(authUrl.searchParams.get('redirect_uri'), REDIRECT_URI);
+      assert.equal(authUrl.searchParams.get('response_type'), 'code');
+      assert.equal(authUrl.searchParams.get('scope'), 'https://www.googleapis.com/auth/youtube');
+      assert.equal(authUrl.searchParams.get('access_type'), 'offline');
+      assert.match(authUrl.searchParams.get('prompt') ?? '', /consent/);
+      const state = authUrl.searchParams.get('state') ?? '';
+      assert.ok(state.length >= 32);
+
+      const callback = `/api/youtube/callback?code=${fake.issueCode()}&state=${state}`;
+      assert.equal(await redirectTarget(callback), '/youtube?verbunden=1');
+      // Jeder state gilt nur einmal.
+      assert.equal(await redirectTarget(callback), '/youtube?fehler=sitzung');
+
+      const { body } = await api('GET', '/api/youtube/status');
+      assert.equal(body.connected, true);
+      assert.equal(body.expired, false);
+      assert.deepEqual(body.channel, {
+        id: 'UCfakechannel',
+        title: 'Mein Testkanal',
+        thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',
+      });
+      assert.equal(fake.refreshTokens.size, 1, 'ein Refresh-Token wurde ausgestellt');
+    });
+
+    test('abgebrochene, fremde und unvollständige Anmeldungen verbinden nicht', async () => {
+      assert.equal(await redirectTarget('/api/youtube/callback?code=x&state=ausgedacht'), '/youtube?fehler=sitzung');
+      assert.equal(
+        await redirectTarget(`/api/youtube/callback?error=access_denied&state=${await startLogin()}`),
+        '/youtube?fehler=abgebrochen',
+      );
+      assert.equal(
+        await redirectTarget(`/api/youtube/callback?code=ungueltig&state=${await startLogin()}`),
+        '/youtube?fehler=anmeldung',
+      );
+      fake.grantedScope = 'openid';
+      assert.equal(
+        await redirectTarget(`/api/youtube/callback?code=${fake.issueCode()}&state=${await startLogin()}`),
+        '/youtube?fehler=berechtigung',
+      );
+      assert.equal((await api('GET', '/api/youtube/status')).body.connected, false);
+    });
+
+    test('abgelaufene Tokens werden erneuert, ein widerrufener Zugang verlangt neues Verbinden', async () => {
+      await connect();
+      fake.expireAccessTokens();
+      assert.equal((await api('GET', '/api/youtube/playlists')).status, 200);
+      assert.ok(fake.calls.some((call) => call.grantType === 'refresh_token'));
+
+      fake.revokeAll();
+      const failed = await api('GET', '/api/youtube/playlists');
+      assert.equal(failed.status, 401);
+      assert.equal(failed.body.code, 'youtube_reconnect');
+      assert.equal((await api('GET', '/api/youtube/status')).body.expired, true);
+
+      await connect();
+      assert.equal((await api('GET', '/api/youtube/status')).body.expired, false);
+      assert.equal((await api('GET', '/api/youtube/playlists')).status, 200);
+    });
+
+    test('die Suche bewertet Treffer und zählt das Kontingent mit', async () => {
+      await connect();
+      const query = new URLSearchParams({
+        q: 'Ed Sheeran Shape of You',
+        title: 'Shape of You',
+        artist: 'Ed Sheeran',
+        duration: '263',
+      });
+      const { status, body } = await api('GET', `/api/youtube/search?${query}`);
+      assert.equal(status, 200);
+      assert.equal(body[0].videoId, 'JGwWNGJdvx8');
+      assert.equal(body[0].recommended, true);
+      assert.equal(body[0].title, 'Ed Sheeran - Shape of You (Official Music Video)');
+      assert.equal(body[0].durationSeconds, 264);
+      assert.ok(body.findIndex((video: Json) => video.videoId === 'shapeCover1') > 0);
+
+      const quota = (await api('GET', '/api/youtube/status')).body.quota;
+      assert.equal(quota.searchesUsed, 1);
+      assert.equal(quota.unitsUsed, 2, 'Kanal beim Verbinden und Dauer der Treffer');
+      assert.equal((await api('GET', '/api/youtube/search?q=a')).status, 400);
+      // Sehr lange Songtitel werden für die Suche gekürzt statt abgelehnt.
+      const long = await api('GET', `/api/youtube/search?q=${encodeURIComponent('Adele Hello '.repeat(40))}`);
+      assert.equal(long.status, 200);
+    });
+
+    test('ein aufgebrauchtes Kontingent wird verständlich gemeldet', async () => {
+      await connect();
+      fake.failNext.push({ status: 403, reason: 'quotaExceeded' });
+      const search = await api('GET', '/api/youtube/search?q=Hello%20Adele');
+      assert.equal(search.status, 429);
+      assert.equal(search.body.code, 'youtube_quota');
+      assert.match(search.body.error, /100 YouTube-Suchen/);
+
+      fake.failNext.push({ status: 403, reason: 'quotaExceeded' });
+      const playlists = await api('GET', '/api/youtube/playlists');
+      assert.equal(playlists.status, 429);
+      assert.match(playlists.body.error, /Tageskontingent/);
+    });
+
+    test('ohne YouTube-Kanal gibt es einen Hinweis', async () => {
+      fake.hasChannel = false;
+      await connect();
+      assert.equal((await api('GET', '/api/youtube/status')).body.channel, null);
+      const playlists = await api('GET', '/api/youtube/playlists');
+      assert.equal(playlists.status, 409);
+      assert.equal(playlists.body.code, 'youtube_no_channel');
+      assert.equal((await api('GET', '/api/youtube/status')).body.expired, false);
+    });
+
+    test('listet die eigenen Playlists, auch über mehrere Seiten', async () => {
+      fake = new FakeGoogle({ pageSize: 1 });
+      await connect();
+      const { body } = await api('GET', '/api/youtube/playlists');
+      assert.deepEqual(
+        body.map((playlist: Json) => [playlist.id, playlist.title, playlist.itemCount, playlist.privacyStatus]),
+        [
+          ['PLfakeFavorites', 'Lieblingssongs', 6, 'private'],
+          ['PLfakeWorkout', 'Workout', 6, 'public'],
+        ],
+      );
+      assert.equal(body[0].url, 'https://www.youtube.com/playlist?list=PLfakeFavorites');
+      assert.equal(body[0].musicUrl, 'https://music.youtube.com/playlist?list=PLfakeFavorites');
+    });
+
+    test('die Vorschau erkennt Songs der Bibliothek, Dubletten und nicht verfügbare Videos', async () => {
+      fake = new FakeGoogle({ pageSize: 4 });
+      await connect();
+      const hello = await createSong({ title: 'Hello', artist: 'Adele', durationSeconds: 295 });
+      const { status, body } = await api('GET', '/api/youtube/playlists/PLfakeFavorites');
+      assert.equal(status, 200);
+      assert.equal(body.playlist.title, 'Lieblingssongs');
+      assert.deepEqual(
+        body.items.map((item: Json) => [
+          item.videoId,
+          item.available,
+          item.artist,
+          item.title,
+          item.match?.songId ?? null,
+          item.duplicateOf,
+        ]),
+        [
+          ['dQw4w9WgXcQ', true, 'Rick Astley', 'Never Gonna Give You Up', null, null],
+          ['YQHsXMglC9A', true, 'Adele', 'Hello', hello.id, null],
+          ['deletedVid1', false, 'Unbekannt', 'Deleted video', null, null],
+          ['JGwWNGJdvx8', true, 'Ed Sheeran', 'Shape of You', null, null],
+          ['adeleHello1', true, 'Adele', 'Hello', hello.id, null],
+          ['dQw4w9WgXcQ', true, 'Rick Astley', 'Never Gonna Give You Up', null, 0],
+        ],
+      );
+      assert.equal(body.items[1].match.reason, 'title');
+      assert.equal(body.items[0].durationSeconds, 213);
+      assert.equal(body.items[0].isMusic, true);
+
+      const liked = await api('GET', '/api/youtube/playlists/mag-ich');
+      assert.equal(liked.status, 200);
+      assert.deepEqual(
+        liked.body.items.map((item: Json) => [item.videoId, item.isMusic]),
+        [
+          ['dQw4w9WgXcQ', true],
+          ['catVideo123', false],
+          ['RgKAFK5djSk', true],
+        ],
+      );
+      assert.equal((await api('GET', '/api/youtube/playlists/PLgibtsnicht')).status, 404);
+      assert.equal((await api('GET', '/api/youtube/playlists/..%2F..')).status, 404);
+    });
+
+    test('übernimmt Videos als Songs, verknüpft vorhandene und legt eine Playlist an', async () => {
+      const hello = await createSong({ title: 'Hello', artist: 'Adele', album: '25' });
+      const seeYou = await createSong({
+        title: 'See You Again',
+        artist: 'Wiz Khalifa',
+        youtubeUrl: 'https://www.youtube.com/watch?v=RgKAFK5djSk',
+      });
+      const result = await api('POST', '/api/youtube/import', {
+        playlist: { name: 'Lieblingssongs', description: 'Von YouTube' },
+        categoryIds: [CALM],
+        items: [
+          {
+            action: 'create',
+            videoId: 'dQw4w9WgXcQ',
+            title: 'Never Gonna Give You Up',
+            artist: 'Rick Astley',
+            durationSeconds: 213,
+            thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg',
+          },
+          { action: 'link', videoId: 'YQHsXMglC9A', songId: hello.id },
+          { action: 'create', videoId: 'JGwWNGJdvx8', title: 'Shape of You', artist: 'Ed Sheeran', durationSeconds: 264 },
+          // Derselbe Song noch einmal: wird weder doppelt angelegt noch doppelt gezählt.
+          { action: 'create', videoId: 'adeleHello1', title: 'never gonna give you up', artist: 'rick astley' },
+          { action: 'link', videoId: 'adeleHello1', songId: hello.id },
+          // Schon verlinkt: bleibt, wie er ist.
+          { action: 'link', videoId: 'RgKAFK5djSk', songId: seeYou.id },
+        ],
+      });
+      assert.equal(result.status, 201, JSON.stringify(result.body));
+      assert.deepEqual(
+        { ...result.body, playlistId: typeof result.body.playlistId },
+        { createdSongs: 2, linkedSongs: 1, existingSongs: 1, playlistId: 'number' },
+      );
+
+      const playlist = (await api('GET', `/api/playlists/${result.body.playlistId}`)).body;
+      assert.equal(playlist.name, 'Lieblingssongs');
+      assert.equal(playlist.youtubePlaylistId, null, 'übernommene Playlists werden nicht zurückübertragen');
+      const songs: Json[] = (await api('GET', '/api/songs')).body;
+      const byTitle = new Map<string, Json>(songs.map((song) => [song.title, song]));
+      assert.equal(byTitle.size, 4);
+      assert.deepEqual(playlist.songIds, [
+        byTitle.get('Never Gonna Give You Up').id,
+        hello.id,
+        byTitle.get('Shape of You').id,
+        seeYou.id,
+      ]);
+      assert.equal(byTitle.get('Hello').youtubeUrl, 'https://www.youtube.com/watch?v=YQHsXMglC9A');
+      assert.equal(byTitle.get('Shape of You').youtubeUrl, 'https://www.youtube.com/watch?v=JGwWNGJdvx8');
+      assert.deepEqual(byTitle.get('Shape of You').categoryIds, [CALM]);
+      assert.deepEqual(byTitle.get('Hello').categoryIds, [], 'vorhandene Songs behalten ihre Kategorien');
+      assert.equal(byTitle.get('Never Gonna Give You Up').artworkUrl, 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg');
+      assert.equal(byTitle.get('Never Gonna Give You Up').durationSeconds, 213);
+    });
+
+    test('Importe ohne Playlist und ungültige Importe', async () => {
+      const onlySongs = await api('POST', '/api/youtube/import', {
+        items: [{ action: 'create', videoId: 'dQw4w9WgXcQ', title: 'X', artist: 'Y' }],
+      });
+      assert.equal(onlySongs.status, 201);
+      assert.equal(onlySongs.body.playlistId, null);
+
+      for (const body of [
+        { items: [] },
+        { items: [{ action: 'create', videoId: 'kaputt', title: 'A', artist: 'B' }] },
+        { items: [{ action: 'create', videoId: 'dQw4w9WgXcQ', title: '', artist: 'B' }] },
+        { items: [{ action: 'link', videoId: 'dQw4w9WgXcQ', songId: 999 }] },
+        { items: [{ action: 'create', videoId: 'dQw4w9WgXcQ', title: 'A', artist: 'B' }], categoryIds: [999] },
+      ]) {
+        assert.equal((await api('POST', '/api/youtube/import', body)).status, 400, JSON.stringify(body));
+      }
+      assert.equal((await api('GET', '/api/songs')).body.length, 1, 'fehlgeschlagene Importe ändern nichts');
+    });
+
+    test('gefundene Videos werden als YouTube-Link gespeichert', async () => {
+      const song = await createSong({ title: 'Hello', artist: 'Adele' });
+      const result = await api('POST', '/api/youtube/links', {
+        links: [
+          { songId: song.id, videoId: 'YQHsXMglC9A' },
+          { songId: 999, videoId: 'dQw4w9WgXcQ' },
+        ],
+      });
+      assert.deepEqual(result, { status: 200, body: { updated: 1 } });
+      const saved = (await api('GET', `/api/songs/${song.id}`)).body;
+      assert.equal(saved.youtubeUrl, 'https://www.youtube.com/watch?v=YQHsXMglC9A');
+      const invalid = await api('POST', '/api/youtube/links', { links: [{ songId: song.id, videoId: 'zu-kurz' }] });
+      assert.equal(invalid.status, 400);
+    });
+
+    test('überträgt eine Playlist und gleicht sie später ab', async () => {
+      await connect();
+      const rick = await createSong({
+        title: 'Never Gonna Give You Up',
+        artist: 'Rick Astley',
+        youtubeUrl: 'https://youtu.be/dQw4w9WgXcQ',
+      });
+      const hello = await createSong({
+        title: 'Hello',
+        artist: 'Adele',
+        youtubeMusicUrl: 'https://music.youtube.com/watch?v=YQHsXMglC9A',
+      });
+      const silent = await createSong({ title: 'Ohne Video', artist: 'Niemand' });
+      const shape = await createSong({
+        title: 'Shape of You',
+        artist: 'Ed Sheeran',
+        youtubeUrl: 'https://www.youtube.com/watch?v=JGwWNGJdvx8',
+      });
+      const playlist = (
+        await api('POST', '/api/playlists', {
+          name: 'Abendrunde',
+          description: 'Zum Ausklang',
+          songIds: [rick.id, silent.id, hello.id],
+        })
+      ).body;
+
+      const started = await api('POST', `/api/playlists/${playlist.id}/youtube`, { privacyStatus: 'unlisted' });
+      assert.equal(started.status, 202);
+      const first = await waitForJob(started.body.id);
+      assert.equal(first.status, 'done', JSON.stringify(first.error));
+      assert.deepEqual([first.result.created, first.result.added, first.done, first.total], [true, 2, 3, 3]);
+      assert.deepEqual(first.result.withoutVideo, [{ songId: silent.id, title: 'Ohne Video', artist: 'Niemand' }]);
+      const remoteId: string = first.result.youtubePlaylistId;
+      const remote = fake.playlists.find((entry) => entry.id === remoteId)!;
+      assert.deepEqual([remote.title, remote.description, remote.privacyStatus], ['Abendrunde', 'Zum Ausklang', 'unlisted']);
+      assert.deepEqual(fake.playlistVideos(remoteId), ['dQw4w9WgXcQ', 'YQHsXMglC9A']);
+      assert.equal(first.result.url, `https://www.youtube.com/playlist?list=${remoteId}`);
+      const linked = (await api('GET', `/api/playlists/${playlist.id}`)).body;
+      assert.equal(linked.youtubePlaylistId, remoteId);
+      assert.ok(linked.youtubeSyncedAt);
+
+      // Umbenennen, umsortieren und einen Song ergänzen – dann abgleichen.
+      await api('PUT', `/api/playlists/${playlist.id}`, {
+        name: 'Abendrunde 2',
+        description: 'Zum Ausklang',
+        songIds: [shape.id, hello.id, rick.id],
+      });
+      const second = await waitForJob((await api('POST', `/api/playlists/${playlist.id}/youtube`, {})).body.id);
+      assert.equal(second.status, 'done', JSON.stringify(second.error));
+      assert.deepEqual(
+        [second.result.created, second.result.added, second.result.removed, second.result.moved],
+        [false, 1, 0, 1],
+      );
+      assert.deepEqual(fake.playlistVideos(remoteId), ['JGwWNGJdvx8', 'YQHsXMglC9A', 'dQw4w9WgXcQ']);
+      assert.equal(remote.title, 'Abendrunde 2');
+      assert.equal(remote.privacyStatus, 'unlisted', 'die Sichtbarkeit bleibt');
+
+      // Auf YouTube gelöscht: Beim nächsten Abgleich wird sie neu angelegt.
+      fake.playlists = fake.playlists.filter((entry) => entry.id !== remoteId);
+      const third = await waitForJob((await api('POST', `/api/playlists/${playlist.id}/youtube`, {})).body.id);
+      assert.equal(third.result.recreated, true);
+      assert.notEqual(third.result.youtubePlaylistId, remoteId);
+      assert.deepEqual(fake.playlistVideos(third.result.youtubePlaylistId), [
+        'JGwWNGJdvx8',
+        'YQHsXMglC9A',
+        'dQw4w9WgXcQ',
+      ]);
+
+      // Verknüpfung lösen: Die Playlist auf YouTube bleibt.
+      assert.equal((await api('DELETE', `/api/playlists/${playlist.id}/youtube`)).status, 204);
+      assert.equal((await api('GET', `/api/playlists/${playlist.id}`)).body.youtubePlaylistId, null);
+      assert.ok(fake.playlistVideos(third.result.youtubePlaylistId));
+    });
+
+    test('nicht verfügbare Videos werden gemeldet, Fehler beenden die Übertragung sauber', async () => {
+      await connect();
+      const gone = await createSong({ title: 'Weg', artist: 'Niemand', youtubeUrl: 'https://youtu.be/abcdefghijk' });
+      const rick = await createSong({
+        title: 'Never Gonna Give You Up',
+        artist: 'Rick Astley',
+        youtubeUrl: 'https://youtu.be/dQw4w9WgXcQ',
+      });
+      const playlist = (await api('POST', '/api/playlists', { name: 'Test', songIds: [gone.id, rick.id] })).body;
+
+      const done = await waitForJob((await api('POST', `/api/playlists/${playlist.id}/youtube`, {})).body.id);
+      assert.equal(done.status, 'done', JSON.stringify(done.error));
+      assert.deepEqual(done.result.unavailable, [{ songId: gone.id, title: 'Weg', artist: 'Niemand' }]);
+      assert.deepEqual(fake.playlistVideos(done.result.youtubePlaylistId), ['dQw4w9WgXcQ']);
+
+      fake.failNext.push({ status: 403, reason: 'quotaExceeded' });
+      const failed = await waitForJob((await api('POST', `/api/playlists/${playlist.id}/youtube`, {})).body.id);
+      assert.equal(failed.status, 'failed');
+      assert.equal(failed.error.code, 'youtube_quota');
+
+      assert.equal((await api('POST', '/api/playlists/999/youtube', {})).status, 404);
+      const invalid = await api('POST', `/api/playlists/${playlist.id}/youtube`, { privacyStatus: 'geheim' });
+      assert.equal(invalid.status, 400);
+      assert.equal((await api('GET', '/api/youtube/jobs/gibtsnicht')).status, 404);
+    });
+
+    test('Trennen widerruft den Zugang bei Google', async () => {
+      await connect();
+      const [refreshToken] = [...fake.refreshTokens];
+      assert.equal((await api('POST', '/api/youtube/disconnect', {})).status, 204);
+      assert.deepEqual(fake.revoked, [refreshToken]);
+      assert.equal((await api('GET', '/api/youtube/status')).body.connected, false);
+      assert.equal((await api('POST', '/api/youtube/disconnect', {})).status, 204, 'zweimal trennen schadet nicht');
+    });
+  });
+
+  describe('Schutz der API', () => {
+    test('POST-Anfragen müssen JSON senden', async () => {
+      const plain = await fetch(`${baseUrl}/api/youtube/disconnect`, {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: 'x',
+      });
+      assert.equal(plain.status, 415);
+      const form = await fetch(`${baseUrl}/api/songs`, {
+        method: 'POST',
+        body: new URLSearchParams({ title: 'x', artist: 'y' }),
+      });
+      assert.equal(form.status, 415);
+      assert.deepEqual((await api('GET', '/api/songs')).body, []);
+    });
+
+    test('fremde Host-Namen werden abgewiesen (Schutz vor DNS-Rebinding)', async () => {
+      const status = await new Promise<number>((resolve, reject) => {
+        httpRequest(
+          { host: '127.0.0.1', port: new URL(baseUrl).port, path: '/api/songs', headers: { host: 'evil.example' } },
+          (response) => {
+            response.resume();
+            resolve(response.statusCode ?? 0);
+          },
+        )
+          .on('error', reject)
+          .end();
+      });
+      assert.equal(status, 403);
+      assert.equal((await api('GET', '/api/songs')).status, 200);
     });
   });
 });

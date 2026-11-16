@@ -2,6 +2,7 @@
 // einheitlich zu NULL, damit in der Datenbank nie leere Zeichenketten landen.
 
 import * as z from 'zod';
+import { VIDEO_ID_PATTERN } from './services/youtubeIds.ts';
 
 z.config(z.locales.de());
 
@@ -148,3 +149,65 @@ export const lookupQuerySchema = z.object({
     .min(2, 'Der Suchbegriff ist zu kurz.')
     .max(200),
 });
+
+// --- YouTube ---------------------------------------------------------------
+
+const videoIdSchema = z.string().regex(VIDEO_ID_PATTERN, 'Ungültige YouTube-Video-ID.');
+
+export const youtubeSearchQuerySchema = z.object({
+  // Lange Songtitel werden gekürzt statt abgelehnt; für die Suche reicht der Anfang.
+  q: z
+    .string({ error: 'Bitte einen Suchbegriff angeben.' })
+    .trim()
+    .min(2, 'Der Suchbegriff ist zu kurz.')
+    .max(2000, 'Der Suchbegriff ist zu lang.')
+    .transform((value) => value.slice(0, 200)),
+  /** Angaben zum gesuchten Song – damit werden die Treffer bewertet. */
+  title: z.string().trim().max(300).optional(),
+  artist: z.string().trim().max(300).optional(),
+  duration: z.coerce.number().int().min(1).max(86_399).optional(),
+});
+
+export const youtubeLinksSchema = z.object({
+  links: z
+    .array(z.object({ songId: idSchema, videoId: videoIdSchema }))
+    .min(1, 'Bitte mindestens einen Link auswählen.')
+    .max(1000),
+});
+
+export const YOUTUBE_PRIVACY = ['private', 'unlisted', 'public'] as const;
+
+export const youtubeExportSchema = z.object({
+  /** Sichtbarkeit einer neu angelegten YouTube-Playlist */
+  privacyStatus: z.enum(YOUTUBE_PRIVACY).default('private'),
+});
+
+export const youtubeImportSchema = z.object({
+  /** null: nur Songs übernehmen, keine Playlist in der App anlegen */
+  playlist: z
+    .object({
+      name: requiredText(200, 'Bitte einen Namen für die Playlist angeben.'),
+      description: optionalText(2000),
+    })
+    .nullish()
+    .transform((value) => value ?? null),
+  /** Kategorien für neu angelegte Songs */
+  categoryIds: idList(200),
+  items: z
+    .array(
+      z.discriminatedUnion('action', [
+        z.object({ action: z.literal('link'), videoId: videoIdSchema, songId: idSchema }),
+        z.object({
+          action: z.literal('create'),
+          videoId: videoIdSchema,
+          title: requiredText(300, 'Bitte bei jedem neuen Song einen Titel angeben.'),
+          artist: requiredText(300, 'Bitte bei jedem neuen Song einen Interpreten angeben.'),
+          durationSeconds: optionalInt(1, 86_399),
+          thumbnailUrl: optionalUrl('Cover'),
+        }),
+      ]),
+    )
+    .min(1, 'Bitte mindestens ein Video auswählen.')
+    .max(1000),
+});
+export type YoutubeImportInput = z.infer<typeof youtubeImportSchema>;

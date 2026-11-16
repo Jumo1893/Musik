@@ -7,6 +7,8 @@ interface PlaylistRow {
   name: string;
   description: string | null;
   criteria: unknown;
+  youtube_playlist_id: string | null;
+  youtube_synced_at: Date | null;
   song_ids: number[];
   total_duration_seconds: number;
   created_at: Date;
@@ -15,6 +17,7 @@ interface PlaylistRow {
 
 const SELECT_PLAYLISTS = `
   SELECT p.id, p.name, p.description, p.criteria, p.created_at, p.updated_at,
+         p.youtube_playlist_id, p.youtube_synced_at,
          COALESCE(agg.song_ids, '{}'::integer[]) AS song_ids,
          COALESCE(agg.total_duration_seconds, 0)::integer AS total_duration_seconds
     FROM playlists p
@@ -32,6 +35,8 @@ function toPlaylist(row: PlaylistRow): Playlist {
     name: row.name,
     description: row.description,
     criteria: row.criteria,
+    youtubePlaylistId: row.youtube_playlist_id,
+    youtubeSyncedAt: row.youtube_synced_at,
     songIds: row.song_ids,
     totalDurationSeconds: row.total_duration_seconds,
     createdAt: row.created_at,

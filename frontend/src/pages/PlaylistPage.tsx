@@ -6,6 +6,7 @@ import { ConfirmDialog, Modal } from '../components/Modal.tsx';
 import { PlaylistDetailsDialog } from '../components/PlaylistDetailsDialog.tsx';
 import { SongPickerDialog } from '../components/SongPickerDialog.tsx';
 import { StreamingLinks } from '../components/StreamingLinks.tsx';
+import { YoutubeExport } from '../components/YoutubeExport.tsx';
 import { Artwork, CategoryChips, EmptyState, ErrorNote, LoadingNote, PageHeader } from '../components/ui.tsx';
 import { downloadTextFile, toCsv, toFilename } from '../lib/csv.ts';
 import { describeCriteria } from '../lib/criteria.ts';
@@ -180,6 +181,7 @@ function PlaylistView({ playlist, songs, categoriesById }: PlaylistViewProps) {
                 : `${videoIds.length} von ${formatSongCount(entries.length)} ${videoIds.length === 1 ? 'hat' : 'haben'} einen YouTube-Link und ${videoIds.length === 1 ? 'wird' : 'werden'} dort als Wiedergabeliste geöffnet – über „Speichern“ wird daraus eine eigene YouTube-Playlist.`}
               {videoIds.length > YOUTUBE_QUEUE_LIMIT && ` YouTube übernimmt auf diesem Weg höchstens ${YOUTUBE_QUEUE_LIMIT} Songs.`}
             </p>
+            <YoutubeExport playlist={playlist} entries={entries} />
           </section>
 
           <div className="card table-card">
@@ -294,6 +296,7 @@ function PlaylistView({ playlist, songs, categoriesById }: PlaylistViewProps) {
           onConfirm={() => deletePlaylist.mutate(playlist.id)}
         >
           „{playlist.name}“ wird gelöscht. Die Songs bleiben in deiner Bibliothek.
+          {playlist.youtubePlaylistId && ' Die Playlist in deinem YouTube-Konto bleibt erhalten.'}
         </ConfirmDialog>
       )}
 

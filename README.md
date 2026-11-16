@@ -13,6 +13,10 @@ Gespeichert werden nur Angaben und Links zu den Songs – **keine Audiodateien**
 - **Auswertung**: Kennzahlen und Diagramme zu Kategorien, Interpreten, Genres, Jahrzehnten, Songlänge, Bewertung und Energie, häufige Kategorie-Kombinationen und ein Überblick, wo noch Angaben fehlen.
 - **Playlists**: Der Generator stellt aus gewünschten und ausgeschlossenen Kategorien, Ziel-Dauer, Energie, Bewertung, Jahr und Genre einen Vorschlag zusammen – wahlweise gemischt, aufbauend, ausklingend oder als Bogen. Vorschläge lassen sich neu mischen, einzelne Songs austauschen, gespeicherte Playlists von Hand umsortieren und ergänzen.
 - **Mitnehmen**: Playlist auf YouTube als Wiedergabeliste öffnen, als Textliste kopieren oder als CSV exportieren (auch die ganze Songliste).
+- **YouTube-Konto** (optional, siehe [YouTube verbinden](#youtube-verbinden)):
+  - Playlists der App im eigenen YouTube-Konto anlegen und später abgleichen. Sie erscheinen auch in YouTube Music.
+  - Eigene YouTube-Playlists und „Mag ich“-Videos als Songs übernehmen; vorhandene Songs werden erkannt und verknüpft.
+  - Für Songs ohne YouTube-Link passende Videos suchen und gesammelt prüfen.
 
 ## Starten
 
@@ -34,17 +38,78 @@ Danach läuft die App unter <http://localhost:8090>. Mit `docker compose` funkti
 ## Erste Schritte
 
 1. **Songs → Song hinzufügen**: Titel und Interpret ins Suchfeld tippen, Treffer anklicken, Kategorien, Bewertung und Energie wählen, speichern. „Speichern & weiterer Song“ hält den Dialog für den nächsten Song offen.
-2. Für YouTube den Link zum Video einfügen – der Knopf „Suchen“ neben dem Feld öffnet die passende Suche zum Kopieren.
+2. Für YouTube den Link zum Video einfügen. Ohne verbundenes Konto öffnet der Knopf „Suchen“ neben dem Feld die passende Suche zum Kopieren; mit verbundenem Konto zeigt er die Treffer direkt im Dialog.
 3. **Playlists → Playlist erzeugen**: Kategorien und Wunschdauer wählen, Vorschlag prüfen, speichern.
 4. **Auswertung** zeigt, wie sich die Bibliothek zusammensetzt. Je vollständiger Kategorien, Bewertung und Energie gepflegt sind, desto treffsicherer wird der Generator.
 
 ## Streaming-Plattformen: was geht und was nicht
 
-| Plattform | Eingebaut (ohne Konto oder Schlüssel) | Nicht eingebaut |
-|---|---|---|
-| Apple Music | Songsuche im iTunes-Katalog füllt das Formular und liefert den direkten Link; sonst Link zur Suche | Playlists im eigenen Konto anlegen oder auslesen – dafür verlangt Apple eine kostenpflichtige Entwickler-Mitgliedschaft (MusicKit) |
-| YouTube | Direkter Link oder Suche; eine Playlist öffnet sich als Wiedergabeliste (höchstens 50 Songs), die sich dort mit „Speichern“ ins eigene Konto übernehmen lässt | Playlists direkt im Konto anlegen oder auslesen – dafür braucht es ein Google-Cloud-Projekt mit OAuth-Zugang zur YouTube Data API |
-| YouTube Music | Direkter Link (auch abgeleitet aus dem YouTube-Link) oder Suche | Eine offizielle Schnittstelle gibt es nicht |
+| Plattform | Ohne Konto | Mit verbundenem Konto | Nicht eingebaut |
+|---|---|---|---|
+| Apple Music | Songsuche im iTunes-Katalog füllt das Formular und liefert den direkten Link; sonst Link zur Suche | – | Playlists im eigenen Konto anlegen oder auslesen – dafür verlangt Apple eine kostenpflichtige Entwickler-Mitgliedschaft (MusicKit) |
+| YouTube | Direkter Link oder Suche; eine Playlist öffnet sich als Wiedergabeliste (höchstens 50 Songs) | Playlists im Konto anlegen und abgleichen, eigene Playlists und „Mag ich“-Videos übernehmen, fehlende Links suchen | – |
+| YouTube Music | Direkter Link (auch abgeleitet aus dem YouTube-Link) oder Suche | Angelegte Playlists erscheinen auch dort in der Bibliothek (mit ihren Musikvideos) | Eine eigene Schnittstelle für YouTube Music gibt es nicht |
+
+## YouTube verbinden
+
+Damit die App in deinem YouTube-Konto Playlists anlegen und lesen darf, braucht sie eigene Zugangsdaten von Google. Das ist einmalig und kostenlos und dauert etwa zehn Minuten. Dieselbe Anleitung zeigt die App auf der Seite **YouTube**, solange noch nichts eingerichtet ist. Die Menüpunkte der Google Cloud Console heißen je nach Spracheinstellung englisch oder deutsch ähnlich.
+
+1. In der [Google Cloud Console](https://console.cloud.google.com/) ein Projekt anlegen, z. B. „Musik“.
+2. Unter **APIs & Services → Library** die **YouTube Data API v3** suchen und aktivieren (**Enable**).
+3. Unter **Google Auth Platform** auf **Get started**: App-Name (z. B. „Musik“) und deine E-Mail-Adresse eintragen, als Zielgruppe **External** wählen, die Richtlinie bestätigen.
+4. Unter **Audience → Test users** deine eigene Google-Adresse hinzufügen.
+5. Unter **Clients → Create client** den Typ **Web application** wählen und bei **Authorized redirect URIs** genau diese Adresse eintragen:
+
+   ```
+   http://localhost:8090/api/youtube/callback
+   ```
+
+   Bei anderem `WEB_PORT` entsprechend; die App zeigt die richtige Adresse auf der Seite „YouTube“ an.
+6. Client-ID und Client-Secret in die Datei `.env` im Projektordner eintragen (Vorlage `.env.example`). Das Secret zeigt Google nur direkt nach dem Anlegen vollständig an.
+
+   ```
+   YOUTUBE_CLIENT_ID=…
+   YOUTUBE_CLIENT_SECRET=…
+   ```
+
+7. Die App neu starten und auf der Seite **YouTube** auf „Mit YouTube verbinden“ klicken:
+
+   ```bash
+   podman compose up -d
+   ```
+
+Google zeigt beim Verbinden einen Hinweis, dass die App nicht von Google überprüft wurde. Für eine selbst eingerichtete App ist das normal und lässt sich bestätigen. Verbinden klappt nur auf dem Rechner, auf dem die App läuft, weil Google danach zu `localhost` zurückspringt. Wenn die App einmal verbunden ist, lassen sich die Funktionen auch von anderen Geräten nutzen.
+
+**Verbindung läuft nach 7 Tagen ab?** Solange die App bei Google den Status „Testing“ hat, gilt jede Freigabe nur 7 Tage. Dann zeigt die App „Neu verbinden“, ein Klick genügt. Wer das nicht möchte, veröffentlicht die App unter **Audience → Publish app**. Bei weniger als 100 Nutzern ist das ohne Überprüfung durch Google möglich; der Hinweis beim Verbinden bleibt.
+
+### Kontingent
+
+Google begrenzt die Nutzung je Projekt und Tag. Die App zählt mit und zeigt den Stand auf der Seite „YouTube“.
+
+| Aktion | Kosten |
+|---|---|
+| Playlists und Videos lesen | 1 Einheit je Seite (bis zu 50 Einträge) |
+| Playlist anlegen, Song hinzufügen, verschieben oder entfernen | je 50 Einheiten |
+| Video suchen | 1 von 100 Suchen pro Tag (eigenes Kontingent) |
+
+Pro Tag stehen 10.000 Einheiten zur Verfügung, das reicht zum Beispiel für rund 190 übertragene Songs. Das Kontingent wird um Mitternacht pazifischer Zeit zurückgesetzt, in Deutschland meist um 9 Uhr. Beim Abgleichen ändert die App nur, was sich wirklich geändert hat.
+
+### Gut zu wissen
+
+- **Abgleichen** passt die Playlist auf YouTube an den Stand in der App an. Videos, die nur auf YouTube in dieser Playlist stehen, werden dort entfernt. „Verknüpfung lösen“ beendet den Abgleich, die Playlist auf YouTube bleibt.
+- **Übernommene Playlists** sind nicht verknüpft: Änderungen in der App wirken sich nicht auf die ursprüngliche YouTube-Playlist aus.
+- **Songs ohne YouTube-Link** fehlen in der YouTube-Playlist. Vor dem Übertragen lassen sich passende Videos suchen.
+- **Trennen** widerruft den Zugang der App bei Google. Alternativ geht das unter [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+- Zu einem Google-Konto ohne YouTube-Kanal lassen sich keine Playlists anlegen. Einen Kanal legt man auf youtube.com über das Profilbild an.
+
+### Wenn etwas nicht klappt
+
+| Meldung | Ursache und Lösung |
+|---|---|
+| `Error 400: redirect_uri_mismatch` bei Google | Die Rücksprungadresse beim OAuth-Client stimmt nicht genau mit der Adresse auf der Seite „YouTube“ überein. Eintragen, ein paar Minuten warten, erneut verbinden. |
+| `Error 403: access_denied` bei Google | Die verwendete Google-Adresse fehlt unter **Audience → Test users** (solange die App im Status „Testing“ ist). |
+| „Stimmen YOUTUBE_CLIENT_ID und YOUTUBE_CLIENT_SECRET?“ | Client-ID oder Secret in der `.env` falsch. Ein neues Secret gibt es in der Cloud Console über **Add secret**. Danach `podman compose up -d`. |
+| „Tageskontingent aufgebraucht“ | Bis zum Zurücksetzen warten (siehe oben). |
 
 ## Einstellungen
 
@@ -55,49 +120,55 @@ Ohne weiteres Zutun gelten sinnvolle Standardwerte. Zum Ändern `.env.example` n
 | `WEB_PORT` | `8090` | Port der App im Browser |
 | `WEB_BIND` | `127.0.0.1` | `127.0.0.1`: nur von diesem Rechner erreichbar. `0.0.0.0`: auch aus dem Heimnetz, etwa vom Handy |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | `musik` | Zugangsdaten der Datenbank; gelten ab dem ersten Start |
-| `ITUNES_COUNTRY` | `de` | Land des Katalogs für Online-Suche und Apple-Music-Links |
+| `ITUNES_COUNTRY` | `de` | Land des Katalogs für Online-Suche, Apple-Music-Links und YouTube-Suche |
+| `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET` | leer | Zugangsdaten für die YouTube-Anbindung |
+| `APP_URL` | `http://localhost:<WEB_PORT>` | Adresse der App im Browser; daraus ergibt sich die Rücksprungadresse für Google |
 | `DB_PORT` | `5433` | Nur für die Entwicklung: Port der Datenbank auf dem Rechner |
 
-Die App hat keine Anmeldung. Wer sie mit `WEB_BIND=0.0.0.0` öffnet, sollte das nur in einem vertrauten Netz tun. Die Datenbank ist von außen nicht erreichbar.
+Die App hat keine Anmeldung. Wer sie mit `WEB_BIND=0.0.0.0` öffnet, sollte das nur in einem vertrauten Netz tun – mit verbundenem YouTube-Konto kann dann jeder im Netz Playlists in diesem Konto anlegen. Die Datenbank ist von außen nicht erreichbar. Damit fremde Webseiten im selben Browser nichts auslösen können, nimmt die API nur JSON-Anfragen an. Läuft die App nur lokal, antwortet sie außerdem nur unter `localhost` und `127.0.0.1`.
 
 ## Daten sichern und wiederherstellen
 
-Die Datenbank liegt im Volume `musik_db-data`. Eine Sicherung als SQL-Datei:
+Die Datenbank liegt im Volume `musik_db-data`. Eine Sicherung als SQL-Datei (der Ordner `backups/` ist von Git ausgenommen):
 
 ```bash
 podman compose exec db pg_dump -U musik -d musik --clean --if-exists -f /tmp/musik-backup.sql
 ```
 
 ```bash
-podman compose cp db:/tmp/musik-backup.sql ./musik-backup.sql
+podman compose cp db:/tmp/musik-backup.sql ./backups/musik-backup.sql
 ```
 
 Wiederherstellen (ersetzt den aktuellen Stand):
 
 ```bash
-podman compose cp ./musik-backup.sql db:/tmp/musik-backup.sql
+podman compose cp ./backups/musik-backup.sql db:/tmp/musik-backup.sql
 ```
 
 ```bash
 podman compose exec db psql -U musik -d musik -f /tmp/musik-backup.sql
 ```
 
+Unter Git Bash auf Windows vorher `export MSYS_NO_PATHCONV=1` setzen, sonst wird `/tmp/…` in einen Windows-Pfad umgeschrieben.
+
 ## Entwicklung
 
 ### Aufbau
 
 ```
-docker-compose.yml       Datenbank, API und Weboberfläche
-docker-compose.dev.yml   Zusatz: Datenbank auf dem Rechner erreichbar machen
-backend/                 REST-API: Node.js, Express, TypeScript
-  migrations/            SQL-Dateien für das Datenbankschema
-  src/routes/            Endpunkte
-  src/services/          Datenzugriff, Playlist-Generator, iTunes-Suche
-frontend/                Weboberfläche: React, TypeScript, Vite
-  src/pages/             Songs, Kategorien, Playlists, Generator, Auswertung
-  src/components/        Dialoge, Diagramme, Bausteine
-  src/lib/               Formate, Links, CSV, Filter
-  nginx/                 Ausliefern der App und Weiterreichen von /api
+docker-compose.yml               Datenbank, API und Weboberfläche
+docker-compose.dev.yml           Zusatz: Datenbank auf dem Rechner erreichbar machen
+docker-compose.fake-google.yml   Zusatz: Google-Nachbau zum Ausprobieren der YouTube-Funktionen
+backend/                         REST-API: Node.js, Express, TypeScript
+  migrations/                    SQL-Dateien für das Datenbankschema
+  src/routes/                    Endpunkte
+  src/services/                  Datenzugriff, Playlist-Generator, iTunes-Suche, YouTube-Anbindung
+  src/testing/                   Google-Nachbau für Tests
+frontend/                        Weboberfläche: React, TypeScript, Vite
+  src/pages/                     Songs, Kategorien, Playlists, Generator, Auswertung, YouTube
+  src/components/                Dialoge, Diagramme, Bausteine
+  src/lib/                       Formate, Links, CSV, Filter
+  nginx/                         Ausliefern der App und Weiterreichen von /api
 ```
 
 ### Lokal entwickeln
@@ -120,7 +191,21 @@ npm install
 npm run dev
 ```
 
-Die Oberfläche läuft dann unter <http://localhost:5173> und lädt bei Änderungen neu; Anfragen an `/api` gehen an die API auf Port 3001.
+Die Oberfläche läuft dann unter <http://localhost:5173> und lädt bei Änderungen neu; Anfragen an `/api` gehen an die API auf Port 3001. Für die YouTube-Anbindung in diesem Aufbau als Rücksprungadresse `http://localhost:5173/api/youtube/callback` beim OAuth-Client eintragen.
+
+### YouTube-Funktionen ohne Google-Konto ausprobieren
+
+`backend/src/testing/fakeGoogle.ts` baut die benötigten Teile von Google nach (Anmeldung, Playlists, Suche). Mit `docker-compose.fake-google.yml` läuft eine komplette Test-App mit eigener Datenbank daneben, die echte Bibliothek bleibt unberührt:
+
+```bash
+WEB_PORT=8091 podman compose -p musiktest -f docker-compose.yml -f docker-compose.fake-google.yml up -d --build
+```
+
+Die Test-App ist dann unter <http://localhost:8091> erreichbar; „Mit YouTube verbinden“ führt zur nachgebauten Anmeldeseite. Aufräumen:
+
+```bash
+podman compose -p musiktest down -v
+```
 
 ### Tests
 
@@ -134,11 +219,17 @@ cd frontend
 npm test
 ```
 
-Die Backend-Tests prüfen den Generator, die Eingabeprüfung und – gegen eine echte PostgreSQL – die ganze API. Dafür muss die Datenbank wie oben mit `docker-compose.dev.yml` laufen; jeder Lauf legt eine eigene Wegwerf-Datenbank an und rührt die Daten der App nicht an. Ohne erreichbare Datenbank werden die API-Tests übersprungen. `npm run typecheck` prüft in beiden Ordnern die Typen.
+Die Backend-Tests prüfen den Generator, die Eingabeprüfung, die YouTube-Hilfsfunktionen (Titel zerlegen, Treffer bewerten, Playlists abgleichen) und – gegen eine echte PostgreSQL – die ganze API einschließlich Anmeldung und Übertragung gegen den Google-Nachbau. Dafür muss eine Datenbank auf Port 5433 laufen, zum Beispiel die eines Test-Projekts:
+
+```bash
+podman compose -p musiktest -f docker-compose.yml -f docker-compose.dev.yml up -d db
+```
+
+Jeder Lauf legt eine eigene Wegwerf-Datenbank an. Ohne erreichbare Datenbank werden die API-Tests übersprungen. `npm run typecheck` prüft in beiden Ordnern die Typen.
 
 ### Datenbankschema ändern
 
-Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `003_meine_aenderung.sql`. Beim nächsten Start der API werden alle noch nicht eingespielten Dateien in Namensreihenfolge ausgeführt, jede in einer eigenen Transaktion. Bereits eingespielte Dateien nicht mehr ändern.
+Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aenderung.sql`. Beim nächsten Start der API werden alle noch nicht eingespielten Dateien in Namensreihenfolge ausgeführt, jede in einer eigenen Transaktion. Bereits eingespielte Dateien nicht mehr ändern.
 
 ### API
 
@@ -150,13 +241,23 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `003_meine_aender
 | `GET`, `POST /api/categories` · `PUT`, `DELETE /api/categories/:id` | Kategorien |
 | `GET`, `POST /api/playlists` · `GET`, `PUT`, `DELETE /api/playlists/:id` | Playlists |
 | `POST /api/playlists/generate` | Vorschlag für eine Playlist, ohne zu speichern |
+| `POST`, `DELETE /api/playlists/:id/youtube` | Playlist ins YouTube-Konto übertragen (läuft im Hintergrund) bzw. Verknüpfung lösen |
 | `GET /api/stats` | Kennzahlen für die Auswertung |
 | `GET /api/lookup/itunes?term=…` | Songsuche im iTunes-Katalog |
+| `GET /api/youtube/status` | Verbindung und Kontingent |
+| `GET /api/youtube/connect` · `GET /api/youtube/callback` | Anmeldung bei Google (im Browser) |
+| `POST /api/youtube/disconnect` | Verbindung trennen und Zugang widerrufen |
+| `GET /api/youtube/search?q=…&title=…&artist=…&duration=…` | Videos suchen und bewerten |
+| `GET /api/youtube/playlists` · `GET /api/youtube/playlists/:id` | Eigene Playlists bzw. Vorschau zum Übernehmen (`mag-ich` für „Mag ich“-Videos) |
+| `POST /api/youtube/import` | Videos als Songs übernehmen, auf Wunsch als Playlist |
+| `POST /api/youtube/links` | Gefundene Videos als YouTube-Link der Songs speichern |
+| `GET /api/youtube/jobs/:id` | Fortschritt einer Übertragung |
 
 ## Was nach außen geht
 
 - Die Online-Suche schickt den eingetippten Suchbegriff an die iTunes Search API von Apple.
-- Cover werden beim Anzeigen direkt von der gespeicherten Bildadresse geladen (bei Treffern aus der Online-Suche von Apple).
+- Cover werden beim Anzeigen direkt von der gespeicherten Bildadresse geladen (bei Treffern aus der Online-Suche von Apple, bei übernommenen Videos von YouTube).
 - Ein Klick auf einen Plattform-Link öffnet die jeweilige Seite in einem neuen Tab.
+- Mit verbundenem YouTube-Konto spricht das Backend mit Google: Anmeldung, Lesen der eigenen Playlists, Suchen von Videos (Interpret und Titel des Songs) und Anlegen bzw. Ändern der übertragenen Playlists. Die Zugangsdaten liegen in der eigenen Datenbank und verlassen den Rechner nur in Richtung Google.
 
 Sonst bleibt alles auf dem eigenen Rechner.

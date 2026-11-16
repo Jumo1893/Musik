@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-reporter=spec \"src/**/*.test.ts\""
+    "test": "node --import tsx --test --test-reporter=spec \"src/**/*.test.ts\"",
+    "fake-google": "tsx src/testing/fakeGoogleServer.ts"
   },
   "dependencies": {
     "express": "^5.3.0",

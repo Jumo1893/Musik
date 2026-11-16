@@ -85,7 +85,10 @@ export function PlaylistsPage() {
                     <span className="playlist-card-meta">
                       {formatSongCount(playlist.songIds.length)} · {formatTotalDuration(playlist.totalDurationSeconds)}
                     </span>
-                    <span className="playlist-card-meta">Geändert am {formatDate(playlist.updatedAt)}</span>
+                    <span className="playlist-card-meta">
+                      Geändert am {formatDate(playlist.updatedAt)}
+                      {playlist.youtubePlaylistId && ' · auch auf YouTube'}
+                    </span>
                   </span>
                 </Link>
               </li>

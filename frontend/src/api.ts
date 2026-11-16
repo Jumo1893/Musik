@@ -2,6 +2,14 @@
 
 import type {
   AppConfig,
+  YoutubeImportInput,
+  YoutubeImportPreview,
+  YoutubeImportResult,
+  YoutubePlaylistSummary,
+  YoutubePrivacy,
+  YoutubeSearchResult,
+  YoutubeStatus,
+  YoutubeSyncJob,
   Category,
   CategoryInput,
   GeneratorCriteria,
@@ -18,12 +26,15 @@ export class ApiError extends Error {
   readonly status: number;
   /** Meldungen je Eingabefeld, falls der Server die Eingabe abgelehnt hat. */
   readonly fields: Record<string, string>;
+  /** Grund für die Oberfläche, z. B. „youtube_reconnect“ */
+  readonly code: string | null;
 
-  constructor(status: number, message: string, fields: Record<string, string> = {}) {
+  constructor(status: number, message: string, fields: Record<string, string> = {}, code: string | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.fields = fields;
+    this.code = code;
   }
 }
 
@@ -44,9 +55,11 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const init: RequestInit = { method, signal: signal ?? null };
-  if (body !== undefined) {
+  // POST immer als JSON: Die API lehnt andere Formate ab (Schutz vor fremden Formularen).
+  const payload = body === undefined && method === 'POST' ? {} : body;
+  if (payload !== undefined) {
     init.headers = { 'Content-Type': 'application/json' };
-    init.body = JSON.stringify(body);
+    init.body = JSON.stringify(payload);
   }
 
   let response: Response;
@@ -61,14 +74,23 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
 
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const info = (typeof data === 'object' && data !== null ? data : {}) as { error?: unknown; fields?: unknown };
+    const info = (typeof data === 'object' && data !== null ? data : {}) as {
+      error?: unknown;
+      fields?: unknown;
+      code?: unknown;
+    };
     const message =
       typeof info.error === 'string'
         ? info.error
         : response.status >= 502 && response.status <= 504
           ? 'Die API ist gerade nicht erreichbar. Bitte gleich noch einmal versuchen.'
           : `Unerwartete Antwort des Servers (${response.status}).`;
-    throw new ApiError(response.status, message, isStringRecord(info.fields) ? info.fields : {});
+    throw new ApiError(
+      response.status,
+      message,
+      isStringRecord(info.fields) ? info.fields : {},
+      typeof info.code === 'string' ? info.code : null,
+    );
   }
   return data as T;
 }
@@ -96,6 +118,29 @@ export const api = {
   },
   stats: () => request<Stats>('GET', '/stats'),
   config: () => request<AppConfig>('GET', '/config'),
+  youtube: {
+    status: () => request<YoutubeStatus>('GET', '/youtube/status'),
+    disconnect: () => request<void>('POST', '/youtube/disconnect'),
+    search: (
+      hints: { q: string; title?: string | undefined; artist?: string | undefined; duration?: number | null | undefined },
+      signal?: AbortSignal,
+    ) => {
+      const params = new URLSearchParams({ q: hints.q });
+      if (hints.title) params.set('title', hints.title);
+      if (hints.artist) params.set('artist', hints.artist);
+      if (hints.duration) params.set('duration', String(hints.duration));
+      return request<YoutubeSearchResult[]>('GET', `/youtube/search?${params}`, undefined, signal);
+    },
+    playlists: () => request<YoutubePlaylistSummary[]>('GET', '/youtube/playlists'),
+    preview: (id: string) => request<YoutubeImportPreview>('GET', `/youtube/playlists/${encodeURIComponent(id)}`),
+    import: (input: YoutubeImportInput) => request<YoutubeImportResult>('POST', '/youtube/import', input),
+    saveLinks: (links: Array<{ songId: number; videoId: string }>) =>
+      request<{ updated: number }>('POST', '/youtube/links', { links }),
+    startExport: (playlistId: number, privacyStatus: YoutubePrivacy) =>
+      request<YoutubeSyncJob>('POST', `/playlists/${playlistId}/youtube`, { privacyStatus }),
+    job: (id: string) => request<YoutubeSyncJob>('GET', `/youtube/jobs/${encodeURIComponent(id)}`),
+    unlink: (playlistId: number) => request<void>('DELETE', `/playlists/${playlistId}/youtube`),
+  },
   lookup: (term: string, signal?: AbortSignal) =>
     request<LookupResult[]>('GET', `/lookup/itunes?term=${encodeURIComponent(term)}`, undefined, signal),
 };

@@ -2,6 +2,7 @@ import { createApp } from './app.ts';
 import { config } from './config.ts';
 import { createPool, waitForDatabase } from './db.ts';
 import { migrate } from './migrate.ts';
+import { YoutubeService } from './services/youtube.ts';
 
 const pool = createPool(config.db);
 
@@ -9,7 +10,25 @@ await waitForDatabase(pool);
 const applied = await migrate(pool);
 if (applied.length > 0) console.log(`Datenbank-Migrationen eingespielt: ${applied.join(', ')}`);
 
-const app = createApp(pool, { itunesCountry: config.itunesCountry });
+const youtube = new YoutubeService({
+  pool,
+  clientId: config.youtube.clientId,
+  clientSecret: config.youtube.clientSecret,
+  redirectUri: `${config.appUrl}/api/youtube/callback`,
+  endpoints: config.googleEndpoints,
+  regionCode: config.itunesCountry.toUpperCase(),
+});
+console.log(
+  youtube.configured
+    ? `YouTube-Anbindung eingerichtet, Rücksprungadresse: ${youtube.redirectUri}`
+    : 'YouTube-Anbindung nicht eingerichtet (YOUTUBE_CLIENT_ID und YOUTUBE_CLIENT_SECRET fehlen).',
+);
+
+const app = createApp(pool, {
+  itunesCountry: config.itunesCountry,
+  youtube,
+  allowedHosts: config.allowedHosts,
+});
 const server = app.listen(config.port, () => {
   console.log(`Musik-API läuft auf Port ${config.port}`);
 });

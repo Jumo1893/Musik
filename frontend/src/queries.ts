@@ -15,9 +15,39 @@ export const queryKeys = {
   config: ['config'],
 } as const;
 
-/** Lädt nach einer Änderung alles neu – außer den Einstellungen, die sich zur Laufzeit nicht ändern. */
-function refreshData(queryClient: QueryClient): Promise<void> {
-  return queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== queryKeys.config[0] });
+/**
+ * Lädt nach einer Änderung alles neu – außer den Einstellungen, die sich zur Laufzeit
+ * nicht ändern, und den Daten von YouTube (jeder Abruf kostet dort Kontingent).
+ */
+export function refreshData(queryClient: QueryClient): Promise<void> {
+  return queryClient.invalidateQueries({
+    predicate: ({ queryKey: [first, second] }) =>
+      first !== queryKeys.config[0] && (first !== 'youtube' || second === 'status'),
+  });
+}
+
+export function useYoutubeStatus() {
+  return useQuery({ queryKey: ['youtube', 'status'], queryFn: api.youtube.status, staleTime: 10_000 });
+}
+
+/** Eigene Playlists bei YouTube; nur abrufen, wenn die App verbunden ist. */
+export function useYoutubePlaylists(enabled: boolean) {
+  return useQuery({
+    queryKey: ['youtube', 'playlists'],
+    queryFn: api.youtube.playlists,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+export function useYoutubePreview(id: string) {
+  return useQuery({
+    queryKey: ['youtube', 'preview', id],
+    queryFn: () => api.youtube.preview(id),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 }
 
 export function useConfig() {

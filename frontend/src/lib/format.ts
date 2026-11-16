@@ -53,6 +53,20 @@ export function formatSongCount(count: number): string {
 }
 
 const dateFormat = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium' });
+const dateTimeFormat = new Intl.DateTimeFormat('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+const timeFormat = new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+/** „16.11.2026, 14:05“ */
+export function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? DASH : dateTimeFormat.format(date);
+}
+
+/** „09:00“ */
+export function formatTime(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? DASH : timeFormat.format(date);
+}
 
 export function formatDate(iso: string): string {
   const date = new Date(iso);

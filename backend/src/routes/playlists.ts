@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { withTransaction, type Pool } from '../db.ts';
 import { notFound, parseId } from '../errors.ts';
-import { generatorCriteriaSchema, playlistInputSchema } from '../schemas.ts';
+import { generatorCriteriaSchema, playlistInputSchema, youtubeExportSchema } from '../schemas.ts';
 import { generatePlaylist } from '../services/generator.ts';
 import {
   createPlaylist,
@@ -11,10 +11,11 @@ import {
   updatePlaylist,
 } from '../services/playlistStore.ts';
 import { listSongs } from '../services/songStore.ts';
+import type { YoutubeService } from '../services/youtube.ts';
 
 const PLAYLIST = 'Die Playlist';
 
-export function playlistsRouter(pool: Pool): Router {
+export function playlistsRouter(pool: Pool, youtube: YoutubeService): Router {
   const router = Router();
 
   router.get('/', async (_req, res) => {
@@ -50,6 +51,25 @@ export function playlistsRouter(pool: Pool): Router {
   router.delete('/:id', async (req, res) => {
     const deleted = await deletePlaylist(pool, parseId(req.params.id, PLAYLIST));
     if (!deleted) throw notFound(PLAYLIST);
+    res.status(204).end();
+  });
+
+  // Überträgt die Playlist in das YouTube-Konto (beim ersten Mal neu angelegt, danach abgeglichen).
+  // Läuft im Hintergrund; den Fortschritt liefert GET /api/youtube/jobs/:id.
+  router.post('/:id/youtube', async (req, res) => {
+    const playlist = await getPlaylist(pool, parseId(req.params.id, PLAYLIST));
+    if (!playlist) throw notFound(PLAYLIST);
+    const { privacyStatus } = youtubeExportSchema.parse(req.body ?? {});
+    res.status(202).json(await youtube.startExport(playlist.id, privacyStatus));
+  });
+
+  // Löst nur die Verknüpfung; die Playlist auf YouTube bleibt erhalten.
+  router.delete('/:id/youtube', async (req, res) => {
+    const result = await pool.query(
+      'UPDATE playlists SET youtube_playlist_id = NULL, youtube_synced_at = NULL WHERE id = $1',
+      [parseId(req.params.id, PLAYLIST)],
+    );
+    if (result.rowCount === 0) throw notFound(PLAYLIST);
     res.status(204).end();
   });
 

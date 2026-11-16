@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Plus, Search, Trash2 } from 'lucide-react';
-import { ApiError, errorMessage } from '../api.ts';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError, errorMessage } from '../api.ts';
 import { formatDuration, parseDuration } from '../lib/format.ts';
-import { extractYoutubeId, PLATFORMS, searchUrl, type Platform } from '../lib/links.ts';
+import { extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform } from '../lib/links.ts';
 import { distinctGenres } from '../lib/songs.ts';
-import { useCategories, useConfig, useDeleteSong, useSaveSong, useSongs } from '../queries.ts';
+import { useCategories, useConfig, useDeleteSong, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
 import type { LookupResult, Song, SongInput } from '../types.ts';
 import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
@@ -145,12 +146,42 @@ interface LinkFieldProps {
   error: string | undefined;
   hint?: string | undefined;
   onChange: (value: string) => void;
+  /** Statt die Plattform im neuen Tab zu öffnen, direkt in der App suchen (YouTube mit Verbindung). */
+  onSearch?: (() => void) | undefined;
+  searching?: boolean;
 }
 
 /** Eingabefeld für einen Link samt Abkürzung zur Suche auf der Plattform (zum Kopieren des Links). */
-function LinkField({ platform, id, value, placeholder, query, error, hint, onChange }: LinkFieldProps) {
+function LinkField({ platform, id, value, placeholder, query, error, hint, onChange, onSearch, searching }: LinkFieldProps) {
   const { name } = PLATFORMS[platform];
   const storefront = useConfig().data?.appleMusicStorefront;
+  if (onSearch) {
+    return (
+      <Field label={name} htmlFor={id} error={error} hint={hint}>
+        <div className="input-with-action">
+          <input
+            id={id}
+            className="input"
+            type="url"
+            inputMode="url"
+            value={value}
+            placeholder={placeholder}
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <button
+            type="button"
+            className="button"
+            disabled={!query || searching}
+            title={query ? `„${query}“ auf ${name} suchen` : 'Erst Titel oder Interpret eintragen'}
+            onClick={onSearch}
+          >
+            <Search size={16} aria-hidden />
+            {searching ? 'Suche …' : 'Suchen'}
+          </button>
+        </div>
+      </Field>
+    );
+  }
   return (
     <Field label={name} htmlFor={id} error={error} hint={hint}>
       <div className="input-with-action">
@@ -203,6 +234,12 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
 
   const categories = useCategories();
   const songs = useSongs();
+  const queryClient = useQueryClient();
+  const youtubeStatus = useYoutubeStatus();
+  const youtubeSearch = useMutation({
+    mutationFn: (hints: Parameters<typeof api.youtube.search>[0]) => api.youtube.search(hints),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['youtube', 'status'] }),
+  });
   const saveSong = useSaveSong();
   const deleteSong = useDeleteSong();
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -265,6 +302,18 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
   }
 
   const query = `${form.artist} ${form.title}`.trim();
+
+  // Mit verbundenem YouTube-Konto sucht der Knopf neben dem YouTube-Feld direkt in der App.
+  const youtubeReady = Boolean(youtubeStatus.data?.configured && youtubeStatus.data.connected && !youtubeStatus.data.expired);
+  function searchYoutube() {
+    const duration = parseDuration(form.duration);
+    youtubeSearch.mutate({
+      q: query,
+      title: form.title.trim() || undefined,
+      artist: form.artist.trim() || undefined,
+      duration: duration.ok ? duration.seconds : null,
+    });
+  }
   const youtubeLinkWithoutVideo = form.youtubeUrl.trim() !== '' && extractYoutubeId(form.youtubeUrl) === null;
 
   return (
@@ -474,7 +523,52 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                   : undefined
               }
               onChange={(value) => set('youtubeUrl', value)}
+              onSearch={youtubeReady ? searchYoutube : undefined}
+              searching={youtubeSearch.isPending}
             />
+            {youtubeSearch.isError && (
+              <p className="field-error" role="alert">
+                {errorMessage(youtubeSearch.error)}
+              </p>
+            )}
+            {youtubeSearch.data &&
+              (youtubeSearch.data.length === 0 ? (
+                <p className="field-hint" role="status">
+                  Auf YouTube nichts gefunden.
+                </p>
+              ) : (
+                <div className="youtube-results">
+                  <ul className="lookup-results" aria-label="Treffer auf YouTube">
+                    {youtubeSearch.data.map((video) => (
+                      <li key={video.videoId}>
+                        <button
+                          type="button"
+                          className="lookup-result"
+                          onClick={() => {
+                            set('youtubeUrl', youtubeVideoUrl(video.videoId));
+                            youtubeSearch.reset();
+                          }}
+                        >
+                          <Artwork url={video.thumbnailUrl} size={44} />
+                          <span className="lookup-text">
+                            <span className="lookup-title">{video.title}</span>
+                            <span className="lookup-meta">
+                              {video.channelTitle ?? 'Unbekannter Kanal'}
+                              {video.recommended && ' · passt am besten'}
+                            </span>
+                          </span>
+                          <span className="lookup-duration">{formatDuration(video.durationSeconds)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="field-hint">
+                    Ein Klick übernimmt das Video.
+                    {youtubeStatus.data &&
+                      ` Heute noch ${Math.max(0, youtubeStatus.data.quota.searchesLimit - youtubeStatus.data.quota.searchesUsed)} von ${youtubeStatus.data.quota.searchesLimit} Suchen frei.`}
+                  </p>
+                </div>
+              ))}
             <LinkField
               platform="youtubeMusic"
               id={`${id}-youtube-music`}

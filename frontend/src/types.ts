@@ -68,6 +68,9 @@ export interface Playlist {
   name: string;
   description: string | null;
   criteria: GeneratorCriteria | null;
+  /** Gegenstück im YouTube-Konto, falls die Playlist dorthin übertragen wurde */
+  youtubePlaylistId: string | null;
+  youtubeSyncedAt: string | null;
   /** Song-IDs in Abspielreihenfolge */
   songIds: number[];
   totalDurationSeconds: number;
@@ -132,4 +135,123 @@ export interface Stats {
   /** Dauer in ganzen Minuten abgerundet; 7 steht für „7 Minuten und länger“. */
   byDurationMinute: Array<{ minute: number; songCount: number }>;
   categoryPairs: Array<{ firstId: number; secondId: number; songCount: number }>;
+}
+
+// --- YouTube (Gegenstück zu backend/src/types.ts) ---------------------------
+
+export interface YoutubeChannel {
+  id: string;
+  title: string;
+  thumbnailUrl: string | null;
+}
+
+export interface YoutubeStatus {
+  configured: boolean;
+  /** Diese Adresse muss beim OAuth-Client in der Google Cloud Console eingetragen sein. */
+  redirectUri: string;
+  connected: boolean;
+  expired: boolean;
+  channel: YoutubeChannel | null;
+  connectedAt: string | null;
+  quota: {
+    unitsUsed: number;
+    unitsLimit: number;
+    searchesUsed: number;
+    searchesLimit: number;
+    resetsAt: string;
+  };
+}
+
+export interface YoutubeSearchResult {
+  videoId: string;
+  title: string;
+  channelTitle: string | null;
+  durationSeconds: number | null;
+  thumbnailUrl: string | null;
+  score: number;
+  /** Bester Treffer, der gut genug passt, um ihn ohne Nachsehen zu übernehmen */
+  recommended: boolean;
+}
+
+export interface YoutubePlaylistSummary {
+  /** ID bei YouTube oder „mag-ich“ */
+  id: string;
+  title: string;
+  description: string | null;
+  itemCount: number | null;
+  thumbnailUrl: string | null;
+  privacyStatus: string | null;
+  url: string;
+  musicUrl: string | null;
+}
+
+export interface YoutubeImportCandidate {
+  position: number;
+  videoId: string;
+  available: boolean;
+  videoTitle: string;
+  channelTitle: string | null;
+  title: string;
+  artist: string;
+  durationSeconds: number | null;
+  thumbnailUrl: string | null;
+  isMusic: boolean | null;
+  duplicateOf: number | null;
+  match: { songId: number; title: string; artist: string; reason: 'video' | 'title' } | null;
+}
+
+export interface YoutubeImportPreview {
+  playlist: YoutubePlaylistSummary;
+  items: YoutubeImportCandidate[];
+}
+
+export type YoutubeImportItem =
+  | { action: 'link'; videoId: string; songId: number }
+  | {
+      action: 'create';
+      videoId: string;
+      title: string;
+      artist: string;
+      durationSeconds: number | null;
+      thumbnailUrl: string | null;
+    };
+
+export interface YoutubeImportInput {
+  playlist: { name: string; description: string | null } | null;
+  categoryIds: number[];
+  items: YoutubeImportItem[];
+}
+
+export interface YoutubeImportResult {
+  createdSongs: number;
+  linkedSongs: number;
+  existingSongs: number;
+  playlistId: number | null;
+}
+
+export type YoutubePrivacy = 'private' | 'unlisted' | 'public';
+
+export interface YoutubeSyncResult {
+  youtubePlaylistId: string;
+  url: string;
+  musicUrl: string;
+  created: boolean;
+  recreated: boolean;
+  added: number;
+  removed: number;
+  moved: number;
+  orderSkipped: boolean;
+  unavailable: Array<{ songId: number; title: string; artist: string }>;
+  withoutVideo: Array<{ songId: number; title: string; artist: string }>;
+}
+
+export interface YoutubeSyncJob {
+  id: string;
+  playlistId: number;
+  status: 'running' | 'done' | 'failed';
+  done: number;
+  total: number;
+  result: YoutubeSyncResult | null;
+  error: { message: string; code: string | null } | null;
+  startedAt: string;
 }

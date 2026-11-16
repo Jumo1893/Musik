@@ -1,0 +1,33 @@
+# Nur zum Ausprobieren und Testen: ersetzt Google durch einen Nachbau (backend/src/testing),
+# sodass sich alle YouTube-Funktionen ohne Google-Konto bedienen lassen. Immer als eigenes
+# Projekt mit eigener Datenbank starten, damit die echte Bibliothek unberührt bleibt:
+#
+#   WEB_PORT=8091 podman compose -p musiktest -f docker-compose.yml -f docker-compose.fake-google.yml up -d --build
+#
+# Danach läuft die Test-App unter http://localhost:8091. Aufräumen:
+#
+#   podman compose -p musiktest down -v
+
+services:
+  fake-google:
+    build:
+      context: ./backend
+      target: build
+    command: ["npx", "tsx", "src/testing/fakeGoogleServer.ts"]
+    environment:
+      PORT: "8093"
+    ports:
+      - "127.0.0.1:${FAKE_GOOGLE_PORT:-8093}:8093"
+
+  backend:
+    environment:
+      YOUTUBE_CLIENT_ID: fake-client-id
+      YOUTUBE_CLIENT_SECRET: fake-client-secret
+      # Die Anmeldeseite öffnet der Browser, alles andere ruft das Backend im Container-Netz auf.
+      GOOGLE_AUTH_URL: http://localhost:${FAKE_GOOGLE_PORT:-8093}/o/oauth2/v2/auth
+      GOOGLE_TOKEN_URL: http://fake-google:8093/token
+      GOOGLE_REVOKE_URL: http://fake-google:8093/revoke
+      YOUTUBE_API_URL: http://fake-google:8093/youtube/v3
+    depends_on:
+      fake-google:
+        condition: service_started

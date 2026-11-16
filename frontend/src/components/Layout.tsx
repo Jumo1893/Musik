@@ -1,4 +1,4 @@
-import { ChartColumn, Library, ListMusic, Music, Tags } from 'lucide-react';
+import { ChartColumn, Library, ListMusic, Music, Tags, TvMinimalPlay } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 
 const NAVIGATION = [
@@ -6,6 +6,7 @@ const NAVIGATION = [
   { to: '/kategorien', label: 'Kategorien', icon: Tags },
   { to: '/playlists', label: 'Playlists', icon: ListMusic },
   { to: '/auswertung', label: 'Auswertung', icon: ChartColumn },
+  { to: '/youtube', label: 'YouTube', icon: TvMinimalPlay },
 ] as const;
 
 export function Layout() {
