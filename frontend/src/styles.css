@@ -878,55 +878,13 @@ a {
   top: calc(100% + 4px);
   right: 0;
   left: 0;
-  max-height: 320px;
+  max-height: 360px;
   padding: 4px;
   overflow-y: auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface-raised);
   box-shadow: var(--shadow);
-}
-
-.genre-picker-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.genre-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.genre-option-active {
-  background: var(--hover);
-}
-
-.genre-option-icon {
-  flex: none;
-  color: var(--accent-text);
-}
-
-.genre-option-check {
-  visibility: hidden;
-}
-
-.genre-option[aria-selected='true'] {
-  font-weight: 600;
-}
-
-.genre-option[aria-selected='true'] .genre-option-check {
-  visibility: visible;
-}
-
-.genre-option-new {
-  color: var(--accent-text);
 }
 
 .genre-picker-empty {
@@ -936,20 +894,15 @@ a {
   font-size: 13px;
 }
 
-/* Gruppen der aufgeklappten Liste: „In deiner Bibliothek“, „Hauptgenres“, „Treffer“ */
-.genre-group {
+/* Baumliste: Hauptgenres zum Aufklappen, darunter ihre Untergenres; beim Tippen die Treffer */
+.genre-tree,
+.genre-tree-group {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.genre-group + .genre-group {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
-}
-
-.genre-group-label {
+.genre-tree-label {
   padding: 4px 8px 2px;
   color: var(--text-secondary);
   font-size: 11.5px;
@@ -958,13 +911,92 @@ a {
   text-transform: uppercase;
 }
 
-.genre-option-name {
+.genre-tree-label-divided {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.genre-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.genre-row-active {
+  background: var(--hover);
+}
+
+.genre-row-main {
+  font-weight: 600;
+}
+
+/* Untergenres: das Kästchen steht unter dem Kästchen des Hauptgenres, eingerückt um den Pfeil. */
+.genre-row-sub {
+  padding-left: 32px;
+}
+
+.genre-row-toggle {
+  flex: none;
+  color: var(--text-secondary);
+  transition: transform 0.15s;
+}
+
+[aria-expanded='true'] > .genre-row .genre-row-toggle {
+  transform: rotate(90deg);
+}
+
+.genre-check {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: transparent;
+}
+
+.genre-row-main .genre-check:hover {
+  border-color: var(--accent);
+}
+
+[aria-selected='true'] > .genre-row .genre-check {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.genre-row-name {
   flex: 1;
   min-width: 0;
 }
 
-/* Hauptgenre(s) eines Eintrags, rechts und gedämpft */
-.genre-option-detail {
+[aria-selected='true'] > .genre-row:not(.genre-row-main) .genre-row-name {
+  font-weight: 600;
+}
+
+/* Wie viele Untergenres eines Hauptgenres gewählt sind */
+.genre-row-count {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* Hauptgenre(s) eines Treffers oder „eigenes Genre“, rechts und gedämpft */
+.genre-row-detail {
   max-width: 45%;
   overflow: hidden;
   color: var(--text-secondary);
@@ -972,6 +1004,20 @@ a {
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.genre-row-icon {
+  flex: none;
+  color: var(--accent-text);
+}
+
+.genre-row-more,
+.genre-row-new {
+  color: var(--accent-text);
+}
+
+.genre-row-more {
+  font-size: 13px;
 }
 
 .genre-picker-more {

@@ -120,6 +120,7 @@ interface GenreRow {
   from_list: boolean;
   position: number | null;
   main_genres: string[];
+  featured_in: string[];
   aliases: string[];
 }
 
@@ -129,6 +130,10 @@ const SELECT_GENRES = `
                      FROM genre_parents p
                      JOIN genres m ON m.id = p.main_genre_id
                     WHERE p.genre_id = g.id), '{}') AS main_genres,
+         coalesce((SELECT array_agg(m.name ORDER BY m.position)
+                     FROM genre_parents p
+                     JOIN genres m ON m.id = p.main_genre_id
+                    WHERE p.genre_id = g.id AND p.featured), '{}') AS featured_in,
          coalesce((SELECT array_agg(a.alias ORDER BY a.alias)
                      FROM genre_aliases a
                     WHERE a.genre_id = g.id), '{}') AS aliases
@@ -155,7 +160,8 @@ const collator = new Intl.Collator('de', { sensitivity: 'base', numeric: true })
 
 /**
  * Alle Genres für die Auswahllisten: Hauptgenres in ihrer Reihenfolge, dann die Untergenres
- * alphabetisch. Eigene Genres erscheinen nur, solange ein Song sie nutzt.
+ * alphabetisch. Eigene Genres erscheinen nur, solange ein Song sie nutzt. featuredIn nennt die
+ * Hauptgenres, in deren kurzer Liste ein Untergenre steht (Migration 007).
  */
 export async function listGenres(db: Queryable): Promise<GenreInfo[]> {
   const { rows } = await db.query<GenreRow>(SELECT_GENRES);
@@ -172,6 +178,7 @@ export async function listGenres(db: Queryable): Promise<GenreInfo[]> {
       name: row.name,
       isMain: row.is_main,
       mainGenres: row.main_genres,
+      featuredIn: row.featured_in,
       custom: !row.from_list,
       aliases: row.aliases,
     }));

@@ -111,6 +111,8 @@ export interface GenreInfo {
   isMain: boolean;
   /** Hauptgenres eines Untergenres (bei Hauptgenres leer) */
   mainGenres: string[];
+  /** Hauptgenres, in deren kurzer Liste das Untergenre steht (ohne „Mehr anzeigen“ sichtbar) */
+  featuredIn: string[];
   /** Selbst eingetragen, nicht aus der Genre-Liste */
   custom: boolean;
   /** Andere Schreibweisen, z. B. „rap“ für Hip-Hop */

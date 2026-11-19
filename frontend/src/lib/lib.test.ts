@@ -2,7 +2,14 @@ import { describe, expect, test } from 'vitest';
 import type { Category, GenreInfo, Song } from '../types.ts';
 import { toCsv, toFilename } from './csv.ts';
 import { formatCount, formatDuration, formatTotalDuration, parseDuration } from './format.ts';
-import { GenreIndex, libraryGenreGroups, sameGenres } from './genres.ts';
+import {
+  GenreIndex,
+  genreTree,
+  libraryGenreGroups,
+  sameGenres,
+  type GenreTreeMainRow,
+  type GenreTreeOptions,
+} from './genres.ts';
 import { extractYoutubeId, searchUrl, streamingLinks, youtubeQueueUrl, YOUTUBE_QUEUE_LIMIT } from './links.ts';
 import {
   addGenre,
@@ -328,6 +335,7 @@ describe('Genre-Liste', () => {
     name,
     isMain: false,
     mainGenres: [],
+    featuredIn: [],
     custom: false,
     aliases: [],
     ...overrides,
@@ -388,6 +396,137 @@ describe('Genre-Liste', () => {
       { main: 'Rock', subgenres: ['Pop Rock', 'Punk Rock'] },
       { main: 'Hip-Hop', subgenres: [] },
       { main: null, subgenres: ['Mein Genre'] },
+    ]);
+  });
+
+  test('neue Genres bekommen die Hauptgenres, die als Wort im Namen stehen', () => {
+    expect(index.guessMainGenres('New wave pop')).toEqual(['Pop']);
+    expect(index.guessMainGenres('Deutscher Rock & Pop')).toEqual(['Pop', 'Rock']);
+    expect(index.guessMainGenres('Ostblock Rap')).toEqual(['Hip-Hop']);
+    // Nur ganze Wörter: „Popcorn“ ist kein Pop.
+    expect(index.guessMainGenres('Popcorn')).toEqual([]);
+    // So stehen sie schon vor dem Speichern beim richtigen Hauptgenre.
+    expect(index.mainGenresOf('Deutscher Rock')).toEqual(['Rock']);
+    expect(index.mainGenresOfAll(['Ostblock Rap', 'Pop Rock'])).toEqual(['Pop', 'Rock', 'Hip-Hop']);
+  });
+});
+
+describe('Genre-Auswahl als Baum', () => {
+  const info = (name: string, overrides: Partial<GenreInfo> = {}): GenreInfo => ({
+    name,
+    isMain: false,
+    mainGenres: [],
+    featuredIn: [],
+    custom: false,
+    aliases: [],
+    ...overrides,
+  });
+  const index = new GenreIndex([
+    info('Pop', { isMain: true }),
+    info('Rock', { isMain: true }),
+    info('Hip-Hop', { isMain: true, aliases: ['rap'] }),
+    info('Alternative Rock', { mainGenres: ['Rock'], featuredIn: ['Rock'] }),
+    info('Boom Bap', { mainGenres: ['Hip-Hop'], featuredIn: ['Hip-Hop'] }),
+    info('Deutschrap', { mainGenres: ['Hip-Hop'] }),
+    info('Krautrock', { mainGenres: ['Rock'] }),
+    info('Math Rock', { mainGenres: ['Rock'] }),
+    info('New wave pop', { mainGenres: ['Pop'], custom: true }),
+    info('Pop Rock', { mainGenres: ['Pop', 'Rock'], featuredIn: ['Pop'] }),
+    info('Pop-Punk', { mainGenres: ['Pop', 'Rock'] }),
+    info('Punk Rock', { mainGenres: ['Rock'], featuredIn: ['Rock'] }),
+    info('Schrammelmusik', { custom: true }),
+    info('Shoegaze', { mainGenres: ['Rock'] }),
+    info('Zeuhl', { mainGenres: ['Rock'] }),
+  ]);
+  const options = (overrides: Partial<GenreTreeOptions> = {}): GenreTreeOptions => ({
+    value: [],
+    libraryGenres: [],
+    expanded: new Set(),
+    showAll: new Set(),
+    ...overrides,
+  });
+  const main = (name: string | null, overrides: Partial<GenreTreeMainRow> = {}): GenreTreeMainRow => ({
+    kind: 'main',
+    main: name,
+    expanded: false,
+    selected: false,
+    selectedCount: 0,
+    ...overrides,
+  });
+  const sub = (genre: string, mainGenre: string | null, selected = false) => ({ kind: 'sub', genre, main: mainGenre, selected });
+
+  test('zugeklappt stehen die Hauptgenres da, mit der Zahl gewählter Untergenres', () => {
+    expect(genreTree(index, options({ value: ['punk rock', 'Pop', 'Alternative Rock'] }))).toEqual([
+      main('Pop', { selected: true }),
+      main('Rock', { selectedCount: 2 }),
+      main('Hip-Hop'),
+      // Eigene Genres ohne Hauptgenre haben eine eigene Gruppe.
+      main(null),
+    ]);
+  });
+
+  test('aufgeklappt zeigt ein Hauptgenre seine kurze Liste und „Mehr anzeigen“', () => {
+    const rows = genreTree(index, options({ value: ['Zeuhl'], libraryGenres: ['Shoegaze'], expanded: new Set(['Rock']) }));
+    expect(rows.slice(1, 7)).toEqual([
+      main('Rock', { expanded: true, selectedCount: 1 }),
+      // Bekannte Untergenres, gewählte und die der Bibliothek, alphabetisch
+      sub('Alternative Rock', 'Rock'),
+      sub('Punk Rock', 'Rock'),
+      sub('Shoegaze', 'Rock'),
+      sub('Zeuhl', 'Rock', true),
+      { kind: 'more', main: 'Rock', hidden: 4 },
+    ]);
+    expect(rows[7]).toEqual(main('Hip-Hop'));
+  });
+
+  test('„Mehr anzeigen“ zeigt alle Untergenres', () => {
+    const rows = genreTree(index, options({ expanded: new Set(['Rock']), showAll: new Set(['Rock']) }));
+    expect(rows.filter((row) => row.kind === 'sub').map((row) => row.genre)).toEqual([
+      'Alternative Rock',
+      'Krautrock',
+      'Math Rock',
+      'Pop Rock',
+      'Pop-Punk',
+      'Punk Rock',
+      'Shoegaze',
+      'Zeuhl',
+    ]);
+    expect(rows.some((row) => row.kind === 'more')).toBe(false);
+  });
+
+  test('versteckt „Mehr anzeigen“ nur wenige Untergenres, stehen gleich alle da', () => {
+    const rows = genreTree(index, options({ expanded: new Set(['Pop', 'Hip-Hop']) }));
+    expect(rows).toEqual([
+      main('Pop', { expanded: true }),
+      sub('New wave pop', 'Pop'),
+      sub('Pop Rock', 'Pop'),
+      sub('Pop-Punk', 'Pop'),
+      main('Rock'),
+      main('Hip-Hop', { expanded: true }),
+      sub('Boom Bap', 'Hip-Hop'),
+      sub('Deutschrap', 'Hip-Hop'),
+      main(null),
+    ]);
+  });
+
+  test('abgewählte Genres bleiben sichtbar, statt aus der kurzen Liste zu verschwinden', () => {
+    const rows = genreTree(index, options({ keepVisible: ['Krautrock'], expanded: new Set(['Rock']) }));
+    expect(rows).toContainEqual(sub('Krautrock', 'Rock'));
+    expect(rows).toContainEqual({ kind: 'more', main: 'Rock', hidden: 5 });
+  });
+
+  test('eingetippte Genres stehen beim Hauptgenre, das sie beim Speichern bekommen', () => {
+    const rows = genreTree(
+      index,
+      options({ value: ['Deutscher Rock', 'Polka'], expanded: new Set(['Rock', null]), showAll: new Set(['Rock']) }),
+    );
+    expect(rows).toContainEqual(main('Rock', { expanded: true, selectedCount: 1 }));
+    expect(rows).toContainEqual(sub('Deutscher Rock', 'Rock', true));
+    // Ohne passendes Hauptgenre landen sie bei den eigenen Genres ohne Hauptgenre.
+    expect(rows.slice(-3)).toEqual([
+      main(null, { expanded: true, selectedCount: 1 }),
+      sub('Polka', null, true),
+      sub('Schrammelmusik', null),
     ]);
   });
 });

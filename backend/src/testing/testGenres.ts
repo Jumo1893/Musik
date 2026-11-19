@@ -42,6 +42,7 @@ export function catalogDb(): Queryable {
     from_list: item.fromList,
     position: item.position,
     main_genres: item.mainGenres,
+    featured_in: [],
     aliases: item.aliases,
   }));
   return { query: (async () => ({ rows })) as unknown as Queryable['query'] };

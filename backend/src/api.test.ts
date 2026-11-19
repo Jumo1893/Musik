@@ -224,6 +224,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         assert.ok(applied.includes('004_mehrere_genres.sql'));
         assert.ok(applied.includes('005_weitere_kategorien.sql'));
         assert.ok(applied.includes('006_genres.sql'));
+        assert.ok(applied.includes('007_genre_kurzlisten.sql'));
 
         // Schreibweisen der Genre-Liste; was die Liste nicht kennt, bleibt als eigenes Genre.
         const songs = await oldPool.query('SELECT title, genres, song_main_genres(genres) AS main FROM songs ORDER BY title');
@@ -688,6 +689,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         name: 'Alternative Rock',
         isMain: false,
         mainGenres: ['Rock'],
+        featuredIn: ['Rock'],
         custom: false,
         aliases: ['alternative', 'alternative & punk', 'alternative/indie'],
       });
@@ -695,6 +697,23 @@ describe('API', { skip: unavailable ?? false }, () => {
       // Schreibweisen, die sich nur in Leer- und Satzzeichen unterscheiden (hip hop), braucht es nicht.
       assert.ok(byName.get('Hip-Hop').aliases.includes('rap'));
       assert.ok(body.length > 1000);
+    });
+
+    test('jedes Hauptgenre hat eine kurze Liste bekannter Untergenres', async () => {
+      const { body } = await api('GET', '/api/genres');
+      const byName = new Map<string, Json>(body.map((genre: Json) => [genre.name, genre]));
+      // Die kurze Liste gilt je Hauptgenre: Emo Rap gehört auch zu Electronic und Rock, steht aber nur bei Hip-Hop vorn.
+      assert.deepEqual(byName.get('Synth-Pop').featuredIn, ['Pop', 'Electronic']);
+      assert.deepEqual(byName.get('Emo Rap').mainGenres, ['Rock', 'Hip-Hop', 'Electronic']);
+      assert.deepEqual(byName.get('Emo Rap').featuredIn, ['Hip-Hop']);
+      assert.deepEqual(byName.get('Zeuhl').featuredIn, []);
+      assert.deepEqual(byName.get('Rock').featuredIn, []);
+
+      for (const main of body.filter((genre: Json) => genre.isMain)) {
+        const featured = body.filter((genre: Json) => genre.featuredIn.includes(main.name));
+        assert.ok(featured.length >= 5 && featured.length <= 25, `${main.name}: ${featured.length} Untergenres in der kurzen Liste`);
+        for (const genre of featured) assert.ok(genre.mainGenres.includes(main.name), `${genre.name} gehört zu ${main.name}`);
+      }
     });
 
     test('Genres werden beim Speichern vereinheitlicht, unbekannte als eigene Genres angelegt', async () => {
@@ -707,7 +726,14 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.deepEqual(song.mainGenres, ['Pop', 'Rock', 'Hip-Hop']);
 
       const listed = (await api('GET', '/api/genres')).body.find((genre: Json) => genre.name === 'Indie-Schrammel-Pop');
-      assert.deepEqual(listed, { name: 'Indie-Schrammel-Pop', isMain: false, mainGenres: ['Pop'], custom: true, aliases: [] });
+      assert.deepEqual(listed, {
+        name: 'Indie-Schrammel-Pop',
+        isMain: false,
+        mainGenres: ['Pop'],
+        featuredIn: [],
+        custom: true,
+        aliases: [],
+      });
 
       // Eine andere Schreibweise desselben eigenen Genres führt zum vorhandenen Eintrag.
       const second = await createSong({ title: 'Mix 2', artist: 'X', genres: ['indie schrammel pop'] });
