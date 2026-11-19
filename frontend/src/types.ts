@@ -9,6 +9,8 @@ export interface Song {
   releaseYear: number | null;
   /** Kann leer sein; jede Schreibweise kommt höchstens einmal vor. */
   genres: string[];
+  /** Hauptgenres der Genres (Rock für Alternative Rock), in der Reihenfolge der Genre-Liste */
+  mainGenres: string[];
   bpm: number | null;
   /** 1 (ruhig) bis 5 (sehr energiegeladen) */
   energy: number | null;
@@ -25,7 +27,7 @@ export interface Song {
 }
 
 /** Was beim Anlegen und Ändern eines Songs gesendet wird. */
-export type SongInput = Omit<Song, 'id' | 'createdAt' | 'updatedAt'>;
+export type SongInput = Omit<Song, 'id' | 'mainGenres' | 'createdAt' | 'updatedAt'>;
 
 export interface Category {
   id: number;
@@ -103,6 +105,31 @@ export interface LookupResult {
   artworkUrl: string | null;
 }
 
+/** Eintrag der Genre-Liste: Hauptgenre wie Rock oder Untergenre wie Alternative Rock. */
+export interface GenreInfo {
+  name: string;
+  isMain: boolean;
+  /** Hauptgenres eines Untergenres (bei Hauptgenres leer) */
+  mainGenres: string[];
+  /** Selbst eingetragen, nicht aus der Genre-Liste */
+  custom: boolean;
+  /** Andere Schreibweisen, z. B. „rap“ für Hip-Hop */
+  aliases: string[];
+}
+
+/** Genres eines Songs laut MusicBrainz. */
+export interface GenreMatch {
+  /** Zum Übernehmen, das wichtigste zuerst (höchstens drei) */
+  genres: string[];
+  /** Weitere Genres, die MusicBrainz für den Song nennt */
+  suggestions: string[];
+  /** Gefundene Aufnahme */
+  title: string;
+  artist: string;
+  /** Seite der Aufnahme auf musicbrainz.org */
+  url: string;
+}
+
 /** Tempo eines Songs laut songbpm.com, samt dem Eintrag, von dem es stammt. */
 export interface BpmMatch {
   bpm: number;
@@ -141,7 +168,10 @@ export interface Stats {
     averageBpm: number | null;
   }>;
   topArtists: Array<{ artist: string; songCount: number; totalDurationSeconds: number }>;
-  byGenre: Array<{ genre: string | null; songCount: number }>;
+  /** Songs je Hauptgenre; genre null: Songs ohne Hauptgenre */
+  byMainGenre: Array<{ genre: string | null; songCount: number }>;
+  /** Songs je Untergenre (und eigenem Genre); genre null: Songs ohne Untergenre */
+  bySubgenre: Array<{ genre: string | null; songCount: number }>;
   byDecade: Array<{ decade: number; songCount: number }>;
   byRating: Array<{ rating: number | null; songCount: number }>;
   byEnergy: Array<{ energy: number | null; songCount: number }>;

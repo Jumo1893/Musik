@@ -6,9 +6,10 @@ Gespeichert werden nur Angaben und Links zu den Songs – **keine Audiodateien**
 
 ## Was die App kann
 
-- **Songs** mit Titel, Interpret, Album, Dauer, Jahr, Genres, BPM, Bewertung (1–5 Sterne), Energie (1–5), Notizen und Cover. Ein Song kann mehrere Genres haben; die schon vorhandenen stehen im Song-Dialog in einer aufklappbaren Liste, neue lassen sich einfach eintippen.
+- **Songs** mit Titel, Interpret, Album, Dauer, Jahr, Genres, BPM, Bewertung (1–5 Sterne), Energie (1–5), Notizen und Cover.
+- **Genres mit Haupt- und Untergenres**: 17 grobe Hauptgenres (Pop, Rock, Hip-Hop, Electronic, R&B & Soul, Jazz …) und rund 1.250 Untergenres wie Alternative Rock, Punk Rock oder Dance-Pop, nach der Wikipedia-Liste [List of music genres and styles](https://en.wikipedia.org/wiki/List_of_music_genres_and_styles). Ein Untergenre bringt sein Hauptgenre mit (Alternative Rock → Rock), manche gehören zu zweien (Pop Rock → Pop und Rock). Ein Song kann mehrere Genres haben; Tippen durchsucht die ganze Liste, auch nach anderen Schreibweisen („rap“ findet Hip-Hop). Was die Liste nicht kennt, wird als eigenes Genre angelegt und dem Hauptgenre zugeordnet, das im Namen steckt („New wave pop“ → Pop). Generator und Auswertung arbeiten mit Haupt- und Untergenres.
   Die Online-Suche holt die Angaben samt Cover und Apple-Music-Link aus dem iTunes-Katalog, sodass meist nur noch Kategorien und Bewertung fehlen.
-  Das Tempo (BPM) schlägt der Song-Dialog automatisch auf [songbpm.com](https://songbpm.com) nach, sobald Titel und Interpret feststehen – übernommen wird nur ein Treffer, bei dem beides passt, und nur in ein leeres Feld. Bei Songs aus einem YouTube-Import wird es im Hintergrund nachgetragen.
+  Tempo (BPM) und Genres schlägt der Song-Dialog automatisch nach, sobald Titel und Interpret feststehen: das Tempo auf [songbpm.com](https://songbpm.com), die Genres auf [MusicBrainz](https://musicbrainz.org). Übernommen wird nur ein Treffer, bei dem Titel und Interpret passen, und nur in leere Felder – selbst eingetragene Werte bleiben. Weitere Genres von MusicBrainz stehen als Vorschläge unter dem Feld. Bei Songs aus einem YouTube-Import werden Tempo und Genres im Hintergrund nachgetragen.
 - **Kategorien** wie „melancholisch“ oder „aufpushend“: frei anlegbar, farbig, beliebig viele pro Song. 20 Kategorien sind als Startpunkt angelegt – Stimmungen wie „verträumt“ oder „episch“ und Anlässe wie „Sport“, „Roadtrip“ oder „Einschlafen“.
 - **Links zu Apple Music, YouTube und YouTube Music** an jedem Song. Ist ein Link gespeichert, führt der Knopf direkt zum Song, sonst zur Suche auf der Plattform. Ein YouTube-Link genügt auch für YouTube Music.
 - **Auswertung**: Kennzahlen und Diagramme zu Kategorien, Interpreten, Genres, Jahrzehnten, Songlänge, Bewertung und Energie, häufige Kategorie-Kombinationen und ein Überblick, wo noch Angaben fehlen.
@@ -163,7 +164,7 @@ docker-compose.fake-google.yml   Zusatz: Google-Nachbau zum Ausprobieren der You
 backend/                         REST-API: Node.js, Express, TypeScript
   migrations/                    SQL-Dateien für das Datenbankschema
   src/routes/                    Endpunkte
-  src/services/                  Datenzugriff, Playlist-Generator, iTunes- und BPM-Suche, YouTube-Anbindung
+  src/services/                  Datenzugriff, Genre-Liste, Playlist-Generator, Suche (iTunes, BPM, MusicBrainz), YouTube
   src/testing/                   Google-Nachbau für Tests
 frontend/                        Weboberfläche: React, TypeScript, Vite
   src/pages/                     Songs, Kategorien, Playlists, Generator, Auswertung, YouTube
@@ -246,6 +247,8 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 | `GET /api/stats` | Kennzahlen für die Auswertung |
 | `GET /api/lookup/itunes?term=…` | Songsuche im iTunes-Katalog |
 | `GET /api/lookup/bpm?title=…&artist=…&duration=…` | Tempo auf songbpm.com (`{ "match": null }`, wenn unbekannt) |
+| `GET /api/lookup/genres?title=…&artist=…&duration=…` | Genres auf MusicBrainz (`{ "match": null }`, wenn unbekannt) |
+| `GET /api/genres` | Haupt- und Untergenres der Genre-Liste samt eigenen Genres der Bibliothek |
 | `GET /api/youtube/status` | Verbindung und Kontingent |
 | `GET /api/youtube/connect` · `GET /api/youtube/callback` | Anmeldung bei Google (im Browser) |
 | `POST /api/youtube/disconnect` | Verbindung trennen und Zugang widerrufen |
@@ -258,7 +261,8 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 ## Was nach außen geht
 
 - Die Online-Suche schickt den eingetippten Suchbegriff an die iTunes Search API von Apple.
-- Für das Tempo schickt das Backend Interpret und Titel an die Suche von songbpm.com – beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs. songbpm.com hat keine offizielle Schnittstelle; ausgewertet wird die Ergebnisseite. Ändert die Seite ihren Aufbau, findet die App kein Tempo mehr, alles andere funktioniert weiter.
+- Für die Genres schickt das Backend Interpret und Titel an die Suche von MusicBrainz (öffentliche Web-API ohne Schlüssel, höchstens eine Anfrage pro Sekunde) – beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs.
+- Für das Tempo schickt das Backend Interpret und Titel an die Suche von songbpm.com – ebenfalls beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs. songbpm.com hat keine offizielle Schnittstelle; ausgewertet wird die Ergebnisseite. Ändert die Seite ihren Aufbau, findet die App kein Tempo mehr, alles andere funktioniert weiter.
 - Cover werden beim Anzeigen direkt von der gespeicherten Bildadresse geladen (bei Treffern aus der Online-Suche von Apple, bei übernommenen Videos von YouTube).
 - Ein Klick auf einen Plattform-Link öffnet die jeweilige Seite in einem neuen Tab.
 - Mit verbundenem YouTube-Konto spricht das Backend mit Google: Anmeldung, Lesen der eigenen Playlists, Suchen von Videos (Interpret und Titel des Songs) und Anlegen bzw. Ändern der übertragenen Playlists. Die Zugangsdaten liegen in der eigenen Datenbank und verlassen den Rechner nur in Richtung Google.

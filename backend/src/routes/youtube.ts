@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { withTransaction, type Pool } from '../db.ts';
 import { notFound } from '../errors.ts';
 import { youtubeImportSchema, youtubeLinksSchema, youtubeSearchQuerySchema } from '../schemas.ts';
+import type { GenreLookupService } from '../services/genreLookup.ts';
 import type { SongBpmService } from '../services/songBpm.ts';
 import { LIKED_VIDEOS, OAuthFlowError, type YoutubeService } from '../services/youtube.ts';
 import { PLAYLIST_ID_PATTERN } from '../services/youtubeIds.ts';
@@ -10,7 +11,13 @@ import { importFromYoutube, setYoutubeLinks } from '../services/youtubeImport.ts
 /** Ziel nach der Anmeldung bei Google: die YouTube-Seite der App mit Ergebnis in der Adresse. */
 const RESULT_PAGE = '/youtube';
 
-export function youtubeRouter(pool: Pool, youtube: YoutubeService, songBpm: SongBpmService): Router {
+export interface YoutubeRouterServices {
+  youtube: YoutubeService;
+  songBpm: SongBpmService;
+  genreLookup: GenreLookupService;
+}
+
+export function youtubeRouter(pool: Pool, { youtube, songBpm, genreLookup }: YoutubeRouterServices): Router {
   const router = Router();
 
   router.get('/status', async (_req, res) => {
@@ -75,8 +82,9 @@ export function youtubeRouter(pool: Pool, youtube: YoutubeService, songBpm: Song
   router.post('/import', async (req, res) => {
     const input = youtubeImportSchema.parse(req.body);
     const { createdSongIds, ...result } = await withTransaction(pool, (client) => importFromYoutube(client, input));
-    // Das Tempo der neuen Songs wird erst nach dem Speichern nachgeschlagen, damit der Import nicht wartet.
+    // Tempo und Genres der neuen Songs werden erst nach dem Speichern nachgeschlagen, damit der Import nicht wartet.
     songBpm.fillMissing(pool, createdSongIds);
+    genreLookup.fillMissing(pool, createdSongIds);
     res.status(201).json(result);
   });
 

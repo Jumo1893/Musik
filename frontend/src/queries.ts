@@ -5,10 +5,12 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api.ts';
+import { GenreIndex } from './lib/genres.ts';
 import type { Category, CategoryInput, Playlist, PlaylistInput, Song, SongInput } from './types.ts';
 
 export const queryKeys = {
   songs: ['songs'],
+  genres: ['genres'],
   categories: ['categories'],
   playlists: ['playlists'],
   stats: ['stats'],
@@ -52,6 +54,17 @@ export function useYoutubePreview(id: string) {
 
 export function useConfig() {
   return useQuery({ queryKey: queryKeys.config, queryFn: api.config, staleTime: Infinity });
+}
+
+/** Genre-Liste mit Haupt- und Untergenres; ändert sich nur, wenn eigene Genres dazukommen. */
+export function useGenres() {
+  return useQuery({ queryKey: queryKeys.genres, queryFn: api.genres, staleTime: 5 * 60_000 });
+}
+
+/** Die Genre-Liste zum Nachschlagen; solange sie lädt, ist sie leer. */
+export function useGenreIndex(): GenreIndex {
+  const genres = useGenres();
+  return useMemo(() => new GenreIndex(genres.data ?? []), [genres.data]);
 }
 
 export function useSongs() {

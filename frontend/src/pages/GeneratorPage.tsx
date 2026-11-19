@@ -17,8 +17,9 @@ import {
 } from '../components/ui.tsx';
 import { EMPTY_CRITERIA, ORDER_OPTIONS, randomSeed, suggestPlaylistName } from '../lib/criteria.ts';
 import { formatDuration, formatSongCount, formatTotalDuration } from '../lib/format.ts';
-import { distinctGenres, totalDuration } from '../lib/songs.ts';
-import { useById, useCategories, useCreatePlaylist, usePlaylists, useSongs } from '../queries.ts';
+import { libraryGenreGroups } from '../lib/genres.ts';
+import { totalDuration } from '../lib/songs.ts';
+import { useById, useCategories, useCreatePlaylist, useGenreIndex, usePlaylists, useSongs } from '../queries.ts';
 import type { Category, GeneratorCriteria, PlaylistOrder, Song } from '../types.ts';
 
 const DURATION_PRESETS = [30, 45, 60, 90, 120];
@@ -151,7 +152,8 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
   const [seed, setSeed] = useState(randomSeed);
   const [name, setName] = useState('');
 
-  const genres = useMemo(() => distinctGenres(songs), [songs]);
+  const genreIndex = useGenreIndex();
+  const genreGroups = useMemo(() => libraryGenreGroups(songs, genreIndex), [songs, genreIndex]);
   const request = useDebounced(
     useMemo(() => ({ ...criteria, seed }), [criteria, seed]),
     250,
@@ -398,23 +400,40 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
             {missingNote(missing.year, 'Jahr')}
           </fieldset>
 
-          {genres.length > 0 && (
+          {genreGroups.length > 0 && (
             <fieldset className="form-section">
               <legend>Genres</legend>
-              <div className="chip-list">
-                {genres.map((genre) => (
-                  <button
-                    key={genre}
-                    type="button"
-                    className="chip chip-toggle chip-plain"
-                    aria-pressed={criteria.genres.includes(genre)}
-                    onClick={() => toggleGenre(genre)}
-                  >
-                    {genre}
-                  </button>
+              <div className="genre-groups">
+                {genreGroups.map((group) => (
+                  <div key={group.main ?? '–'} className="genre-group-row">
+                    {group.main ? (
+                      <button
+                        type="button"
+                        className="chip chip-toggle chip-plain genre-main-chip"
+                        aria-pressed={criteria.genres.includes(group.main)}
+                        title={`Alle Songs im Hauptgenre ${group.main}`}
+                        onClick={() => toggleGenre(group.main!)}
+                      >
+                        {group.main}
+                      </button>
+                    ) : (
+                      <span className="genre-group-none">Ohne Hauptgenre</span>
+                    )}
+                    {group.subgenres.map((genre) => (
+                      <button
+                        key={genre}
+                        type="button"
+                        className="chip chip-toggle chip-plain genre-sub-chip"
+                        aria-pressed={criteria.genres.includes(genre)}
+                        onClick={() => toggleGenre(genre)}
+                      >
+                        {genre}
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
-              <p className="field-hint">Nichts gewählt heißt: alle Genres.</p>
+              <p className="field-hint">Ein Hauptgenre umfasst alle seine Untergenres. Nichts gewählt heißt: alle Genres.</p>
             </fieldset>
           )}
 

@@ -1,33 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, errorMessage } from '../api.ts';
-import type { BpmMatch } from '../types.ts';
+import { errorMessage, type SongLookupQuery } from '../api.ts';
 
-export type BpmLookupState =
+export type OnlineLookupState<T> =
   | { status: 'idle' }
   | { status: 'searching' }
-  | { status: 'found'; match: BpmMatch }
+  | { status: 'found'; match: T }
   | { status: 'notFound' }
   | { status: 'error'; message: string };
 
-export interface BpmLookupQuery {
-  title: string;
-  artist: string;
-  durationSeconds: number | null;
-}
-
 /**
- * Schlägt das Tempo eines Songs auf songbpm.com nach. Derselbe Song wird nur einmal gesucht
- * (außer mit force); kommt eine neue Suche dazwischen, verfällt die alte.
+ * Schlägt etwas zu einem Song online nach (Tempo auf songbpm.com, Genres auf MusicBrainz).
+ * Derselbe Song wird nur einmal gesucht (außer mit force); kommt eine neue Suche dazwischen,
+ * verfällt die alte. fetchMatch sollte sich nicht ändern (etwa api.lookupBpm).
  */
-export function useBpmLookup() {
-  const [state, setState] = useState<BpmLookupState>({ status: 'idle' });
+export function useOnlineLookup<T>(fetchMatch: (query: SongLookupQuery, signal: AbortSignal) => Promise<{ match: T | null }>) {
+  const [state, setState] = useState<OnlineLookupState<T>>({ status: 'idle' });
   const lastKey = useRef<string | null>(null);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => () => controller.current?.abort(), []);
 
   /** Startet die Suche und gibt zurück, ob sie wirklich gestartet wurde. */
-  const search = useCallback((query: BpmLookupQuery, onFound: (match: BpmMatch) => void, force = false): boolean => {
+  const search = useCallback((query: SongLookupQuery, onFound: (match: T) => void, force = false): boolean => {
     const key = `${query.artist.trim().toLowerCase()}|${query.title.trim().toLowerCase()}`;
     if (!force && key === lastKey.current) return false;
     lastKey.current = key;
@@ -37,7 +31,7 @@ export function useBpmLookup() {
     controller.current = current;
     setState({ status: 'searching' });
 
-    api.lookupBpm(query, current.signal).then(
+    fetchMatch(query, current.signal).then(
       ({ match }) => {
         if (current.signal.aborted) return;
         if (match) {
@@ -55,7 +49,7 @@ export function useBpmLookup() {
       },
     );
     return true;
-  }, []);
+  }, [fetchMatch]);
 
   const reset = useCallback(() => {
     controller.current?.abort();

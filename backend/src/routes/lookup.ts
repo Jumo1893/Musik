@@ -1,22 +1,37 @@
 import { Router } from 'express';
-import { bpmLookupQuerySchema, lookupQuerySchema } from '../schemas.ts';
+import type { Pool } from '../db.ts';
+import { lookupQuerySchema, songLookupQuerySchema } from '../schemas.ts';
+import type { GenreLookupService } from '../services/genreLookup.ts';
 import { searchItunes } from '../services/itunes.ts';
 import type { SongBpmService } from '../services/songBpm.ts';
 
-export function lookupRouter(itunesCountry: string, songBpm: SongBpmService): Router {
+export interface LookupServices {
+  itunesCountry: string;
+  songBpm: SongBpmService;
+  genreLookup: GenreLookupService;
+}
+
+export function lookupRouter(pool: Pool, services: LookupServices): Router {
   const router = Router();
 
   // GET /api/lookup/itunes?term=… – sucht Songs im iTunes-Katalog, um das Formular vorzubelegen.
   router.get('/itunes', async (req, res) => {
     const { term } = lookupQuerySchema.parse(req.query);
-    res.json(await searchItunes(term, itunesCountry));
+    res.json(await searchItunes(term, services.itunesCountry));
   });
 
   // GET /api/lookup/bpm?title=…&artist=…&duration=… – sucht das Tempo auf songbpm.com.
   // { match: null } heißt: Den Song kennt songbpm.com nicht.
   router.get('/bpm', async (req, res) => {
-    const { title, artist, duration } = bpmLookupQuerySchema.parse(req.query);
-    res.json({ match: await songBpm.lookup({ title, artist, durationSeconds: duration ?? null }) });
+    const { title, artist, duration } = songLookupQuerySchema.parse(req.query);
+    res.json({ match: await services.songBpm.lookup({ title, artist, durationSeconds: duration ?? null }) });
+  });
+
+  // GET /api/lookup/genres?title=…&artist=…&duration=… – sucht die Genres auf MusicBrainz.
+  // { match: null } heißt: MusicBrainz kennt den Song nicht oder nennt keine bekannten Genres.
+  router.get('/genres', async (req, res) => {
+    const { title, artist, duration } = songLookupQuerySchema.parse(req.query);
+    res.json({ match: await services.genreLookup.lookup(pool, { title, artist, durationSeconds: duration ?? null }) });
   });
 
   return router;

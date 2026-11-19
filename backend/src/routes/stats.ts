@@ -46,11 +46,25 @@ const TOP_ARTISTS = `
    ORDER BY song_count DESC, lower(artist)
    LIMIT 15`;
 
-// Ein Song mit mehreren Genres zählt bei jedem davon mit; Songs ohne Genre bilden die Zeile NULL.
-const BY_GENRE = `
+// Ein Song zählt bei jedem seiner Hauptgenres mit (Pop Rock bei Pop und Rock); Songs ohne
+// Hauptgenre bilden die Zeile NULL.
+const BY_MAIN_GENRE = `
+  SELECT m.genre, count(*)::integer AS song_count
+    FROM songs s
+    LEFT JOIN LATERAL unnest(song_main_genres(s.genres)) AS m(genre) ON true
+   GROUP BY m.genre
+   ORDER BY song_count DESC, m.genre NULLS LAST`;
+
+// Untergenres und eigene Genres; Hauptgenres, die direkt am Song stehen, zählen hier nicht.
+// Songs ohne Untergenre bilden die Zeile NULL.
+const BY_SUBGENRE = `
   SELECT min(g.genre) AS genre, count(DISTINCT s.id)::integer AS song_count
     FROM songs s
-    LEFT JOIN LATERAL unnest(s.genres) AS g(genre) ON true
+    LEFT JOIN LATERAL (
+         SELECT t.genre
+           FROM unnest(s.genres) AS t(genre)
+          WHERE NOT EXISTS (SELECT 1 FROM genres m WHERE m.is_main AND lower(m.name) = lower(t.genre))
+         ) AS g ON true
    GROUP BY lower(g.genre)
    ORDER BY song_count DESC, lower(g.genre) NULLS LAST`;
 
@@ -90,7 +104,8 @@ export function statsRouter(pool: Pool): Router {
     const totals = (await pool.query(TOTALS)).rows[0];
     const byCategory = (await pool.query(BY_CATEGORY)).rows;
     const topArtists = (await pool.query(TOP_ARTISTS)).rows;
-    const byGenre = (await pool.query(BY_GENRE)).rows;
+    const byMainGenre = (await pool.query(BY_MAIN_GENRE)).rows;
+    const bySubgenre = (await pool.query(BY_SUBGENRE)).rows;
     const byDecade = (await pool.query(BY_DECADE)).rows;
     const byRating = (await pool.query(BY_RATING)).rows;
     const byEnergy = (await pool.query(BY_ENERGY)).rows;
@@ -127,7 +142,8 @@ export function statsRouter(pool: Pool): Router {
         songCount: row.song_count,
         totalDurationSeconds: row.total_duration_seconds,
       })),
-      byGenre: byGenre.map((row) => ({ genre: row.genre, songCount: row.song_count })),
+      byMainGenre: byMainGenre.map((row) => ({ genre: row.genre, songCount: row.song_count })),
+      bySubgenre: bySubgenre.map((row) => ({ genre: row.genre, songCount: row.song_count })),
       byDecade: byDecade.map((row) => ({ decade: row.decade, songCount: row.song_count })),
       byRating: byRating.map((row) => ({ rating: row.rating, songCount: row.song_count })),
       byEnergy: byEnergy.map((row) => ({ energy: row.energy, songCount: row.song_count })),

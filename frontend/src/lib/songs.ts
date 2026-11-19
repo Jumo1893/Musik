@@ -13,7 +13,7 @@ export function normalizeText(text: string): string {
 }
 
 export interface SongFilter {
-  /** Freitext; alle Wörter müssen in Titel, Interpret, Album oder Genre vorkommen. */
+  /** Freitext; alle Wörter müssen in Titel, Interpret, Album, Genre oder Hauptgenre vorkommen. */
   text: string;
   /** Der Song muss jede dieser Kategorien haben. */
   categoryIds: number[];
@@ -27,7 +27,9 @@ export function filterSongs(songs: Song[], filter: SongFilter): Song[] {
     if (filter.onlyUncategorized && song.categoryIds.length > 0) return false;
     if (!filter.categoryIds.every((id) => song.categoryIds.includes(id))) return false;
     if (words.length === 0) return true;
-    const haystack = normalizeText(`${song.title} ${song.artist} ${song.album ?? ''} ${song.genres.join(' ')}`);
+    const haystack = normalizeText(
+      `${song.title} ${song.artist} ${song.album ?? ''} ${song.genres.join(' ')} ${song.mainGenres.join(' ')}`,
+    );
     return words.every((word) => haystack.includes(word));
   });
 }
@@ -75,9 +77,18 @@ export function totalDuration(songs: Song[]): number {
   return songs.reduce((total, song) => total + (song.durationSeconds ?? 0), 0);
 }
 
-/** Vergleichsschlüssel eines Genres: „Pop“, „pop“ und „ Pop “ sind dasselbe Genre. */
+/**
+ * Vergleichsschlüssel eines Genres wie im Backend: klein, ohne Akzente, „&“ als „and“, nur
+ * Buchstaben und Ziffern. „Hip-Hop“, „hip hop“ und „ HipHop “ sind damit dasselbe Genre.
+ */
 export function genreKey(genre: string): string {
-  return genre.trim().toLowerCase();
+  return genre
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/ß/g, 'ss')
+    .replace(/&/g, 'and')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
 }
 
 /** Genres aus mehreren Listen, jede Schreibweise nur einmal (die erste zählt), alphabetisch. */
@@ -108,23 +119,6 @@ export function removeGenre(genres: readonly string[], genre: string): string[] 
   return genres.filter((existing) => genreKey(existing) !== genreKey(genre));
 }
 
-/**
- * Genres, die zur Eingabe passen (ohne Rücksicht auf Groß-/Kleinschreibung und Akzente).
- * Genres, die mit der Eingabe beginnen, stehen vorn; sonst bleibt die Reihenfolge erhalten.
- */
-export function matchGenres(genres: readonly string[], query: string): string[] {
-  const needle = normalizeText(query.trim());
-  if (needle === '') return [...genres];
-  const starts: string[] = [];
-  const contains: string[] = [];
-  for (const genre of genres) {
-    const text = normalizeText(genre);
-    if (text.startsWith(needle)) starts.push(genre);
-    else if (text.includes(needle)) contains.push(genre);
-  }
-  return [...starts, ...contains];
-}
-
 export const SONG_CSV_HEADER = [
   'Titel',
   'Interpret',
@@ -133,6 +127,7 @@ export const SONG_CSV_HEADER = [
   'Dauer (Sekunden)',
   'Jahr',
   'Genres',
+  'Hauptgenres',
   'BPM',
   'Energie',
   'Bewertung',
@@ -156,6 +151,7 @@ export function songCsvRow(song: Song, categories: Map<number, Category>): CsvCe
     song.durationSeconds,
     song.releaseYear,
     song.genres.join(', '),
+    song.mainGenres.join(', '),
     song.bpm,
     song.energy,
     song.rating,

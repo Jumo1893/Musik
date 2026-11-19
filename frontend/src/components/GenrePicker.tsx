@@ -1,31 +1,91 @@
 import { useEffect, useId, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
 import { Check, ChevronDown, Plus, X } from 'lucide-react';
-import { addGenre, genreKey, matchGenres, mergeGenres, removeGenre } from '../lib/songs.ts';
+import type { GenreIndex } from '../lib/genres.ts';
+import { addGenre, genreKey, removeGenre } from '../lib/songs.ts';
 
 interface GenrePickerProps {
   /** id des Eingabefelds, damit die Beschriftung des Felds dazu gehört */
   id: string;
   /** Gewählte Genres in der Reihenfolge, in der sie gewählt wurden */
   value: string[];
-  /** Schon vorhandene Genres der Bibliothek; sie stehen in der aufklappbaren Liste. */
-  options: string[];
+  /** Genre-Liste mit Haupt- und Untergenres */
+  index: GenreIndex;
+  /** Genres, die Songs der Bibliothek schon haben; sie stehen beim Aufklappen oben. */
+  libraryGenres: string[];
   onChange: (genres: string[]) => void;
 }
 
 interface Item {
   genre: string;
+  /** Hauptgenres des Eintrags, „Hauptgenre“ oder „eigenes Genre“ */
+  detail: string;
   /** Eingetipptes Genre, das es noch nicht gibt */
   isNew: boolean;
   selected: boolean;
 }
 
+interface Group {
+  label: string;
+  items: Item[];
+}
+
+/** Höchstens so viele Treffer zeigt die Suche. */
+const MAX_MATCHES = 50;
+
+function detailOf(index: GenreIndex, name: string): string {
+  const genre = index.find(name);
+  if (!genre) return 'eigenes Genre';
+  if (genre.isMain) return 'Hauptgenre';
+  return genre.mainGenres.join(' · ') || 'eigenes Genre';
+}
+
 /**
- * Mehrfachauswahl für Genres. Ein Klick ins Feld (oder Pfeil nach unten) klappt die Liste
- * der schon vorhandenen Genres auf; ein Klick auf einen Eintrag wählt ihn aus oder wieder ab.
- * Tippen filtert die Liste. Ein Genre, das es noch nicht gibt, wird mit Enter oder Komma
- * übernommen – oder beim Verlassen des Felds, damit nichts Eingetipptes verloren geht.
+ * Inhalt der aufgeklappten Liste. Ohne Eingabe: die Genres der Bibliothek und die
+ * Hauptgenres. Mit Eingabe: passende Genres der ganzen Liste und, falls es den Namen noch
+ * nicht gibt, ein Eintrag zum Anlegen.
  */
-export function GenrePicker({ id, value, options, onChange }: GenrePickerProps) {
+function buildGroups(index: GenreIndex, libraryGenres: readonly string[], value: readonly string[], query: string): Group[] {
+  const selected = new Set(value.map(genreKey));
+  const item = (genre: string): Item => ({
+    genre,
+    detail: detailOf(index, genre),
+    isNew: false,
+    selected: selected.has(genreKey(genre)),
+  });
+
+  const typed = query.trim();
+  if (typed === '') {
+    // Gewählte Genres stehen auch dann oben, wenn sonst kein Song sie hat.
+    const own = new Map<string, string>();
+    for (const genre of [...libraryGenres, ...value]) {
+      const name = index.canonical(genre);
+      if (!index.find(name)?.isMain && !own.has(genreKey(name))) own.set(genreKey(name), name);
+    }
+    const ownItems = [...own.values()].sort((a, b) => a.localeCompare(b, 'de')).map(item);
+    return [
+      ...(ownItems.length > 0 ? [{ label: 'In deiner Bibliothek', items: ownItems }] : []),
+      { label: 'Hauptgenres', items: index.mainGenres.map((main) => item(main.name)) },
+    ];
+  }
+
+  const matches = index.search(typed, MAX_MATCHES).map((genre) => item(genre.name));
+  // Eigene Genres, die noch kein Song gespeichert hat, kennt die Liste noch nicht.
+  for (const genre of value) {
+    if (!index.find(genre) && genreKey(genre).includes(genreKey(typed))) matches.push(item(genre));
+  }
+  const exists = index.find(typed) !== undefined || value.some((genre) => genreKey(genre) === genreKey(typed));
+  const groups: Group[] = matches.length > 0 ? [{ label: 'Treffer', items: matches }] : [];
+  if (!exists) groups.push({ label: 'Neu', items: [{ genre: typed, detail: '', isNew: true, selected: false }] });
+  return groups;
+}
+
+/**
+ * Mehrfachauswahl für Genres aus der Genre-Liste (Haupt- und Untergenres). Ein Klick ins Feld
+ * (oder Pfeil nach unten) klappt die Genres der Bibliothek und die Hauptgenres auf; Tippen
+ * durchsucht die ganze Liste, auch nach anderen Schreibweisen („rap“ findet Hip-Hop). Ein Genre,
+ * das es noch nicht gibt, wird mit Enter oder Komma übernommen – oder beim Verlassen des Felds.
+ */
+export function GenrePicker({ id, value, index, libraryGenres, onChange }: GenrePickerProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   /** Mit den Pfeiltasten markierter Eintrag; -1 heißt: keiner */
@@ -33,32 +93,19 @@ export function GenrePicker({ id, value, options, onChange }: GenrePickerProps) 
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
-  const optionId = (index: number) => `${listId}-option-${index}`;
+  const optionId = (position: number) => `${listId}-option-${position}`;
 
-  // Gewählte Genres stehen auch dann in der Liste, wenn sonst kein Song sie hat.
-  const known = useMemo(() => mergeGenres(options, value), [options, value]);
-
-  const items = useMemo<Item[]>(() => {
-    const selected = new Set(value.map(genreKey));
-    const matches = matchGenres(known, query).map((genre) => ({
-      genre,
-      isNew: false,
-      selected: selected.has(genreKey(genre)),
-    }));
-    const typed = query.trim();
-    if (typed === '' || known.some((genre) => genreKey(genre) === genreKey(typed))) return matches;
-    return [...matches, { genre: typed, isNew: true, selected: false }];
-  }, [known, value, query]);
+  const groups = useMemo(() => buildGroups(index, libraryGenres, value, query), [index, libraryGenres, value, query]);
+  const items = useMemo(() => groups.flatMap((group) => group.items), [groups]);
 
   // Die markierte Zeile bleibt beim Blättern mit den Pfeiltasten sichtbar.
   useEffect(() => {
     if (open && active >= 0) document.getElementById(`${listId}-option-${active}`)?.scrollIntoView({ block: 'nearest' });
   }, [open, active, listId]);
 
-  /** Hängt ein eingetipptes Genre an; gibt es das Genre schon, gilt dessen Schreibweise. */
+  /** Hängt ein eingetipptes Genre an, in der Schreibweise der Genre-Liste („rap“ → Hip-Hop). */
   function withTyped(genres: string[], typed: string): string[] {
-    const existing = known.find((genre) => genreKey(genre) === genreKey(typed));
-    return addGenre(genres, existing ?? typed);
+    return addGenre(genres, index.canonical(typed));
   }
 
   /** Übernimmt den eingetippten Text als Genre. */
@@ -80,14 +127,15 @@ export function GenrePicker({ id, value, options, onChange }: GenrePickerProps) 
     setActive(rest.trim() === '' ? -1 : 0);
   }
 
-  function choose(index: number) {
-    const item = items[index];
+  function choose(position: number) {
+    const item = items[position];
     if (!item) return;
     const next = item.selected ? removeGenre(value, item.genre) : addGenre(value, item.genre);
     onChange(next);
     setQuery('');
     // Ohne Suchtext steht wieder die ganze Liste da; die Markierung bleibt beim gewählten Genre.
-    setActive(mergeGenres(options, next).findIndex((genre) => genreKey(genre) === genreKey(item.genre)));
+    const nextItems = buildGroups(index, libraryGenres, next, '').flatMap((group) => group.items);
+    setActive(nextItems.findIndex((entry) => genreKey(entry.genre) === genreKey(item.genre)));
   }
 
   function remove(genre: string) {
@@ -149,6 +197,7 @@ export function GenrePicker({ id, value, options, onChange }: GenrePickerProps) 
     close();
   }
 
+  let position = -1;
   return (
     <div className="genre-picker" ref={rootRef} onBlur={handleBlur}>
       <div
@@ -161,7 +210,7 @@ export function GenrePicker({ id, value, options, onChange }: GenrePickerProps) 
       >
         <div className="genre-picker-values">
           {value.map((genre) => (
-            <span key={genreKey(genre)} className="chip genre-chip">
+            <span key={genreKey(genre)} className="chip genre-chip" title={detailOf(index, genre)}>
               {genre}
               <button
                 type="button"
@@ -210,33 +259,51 @@ export function GenrePicker({ id, value, options, onChange }: GenrePickerProps) 
       </div>
 
       {open && (
-        <div className="genre-picker-popup">
+        <div className="genre-picker-popup" onMouseDown={(event) => event.preventDefault()}>
           {items.length > 0 ? (
-            <ul id={listId} className="genre-picker-list" role="listbox" aria-multiselectable="true" aria-label="Genres">
-              {items.map((item, index) => (
-                <li
-                  key={item.isNew ? `neu:${item.genre}` : genreKey(item.genre)}
-                  id={optionId(index)}
-                  role="option"
-                  aria-selected={item.selected}
-                  className={`genre-option${index === active ? ' genre-option-active' : ''}${item.isNew ? ' genre-option-new' : ''}`}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseMove={() => {
-                    if (index !== active) setActive(index);
-                  }}
-                  onClick={() => choose(index)}
-                >
-                  {item.isNew ? (
-                    <Plus size={15} aria-hidden className="genre-option-icon" />
-                  ) : (
-                    <Check size={15} aria-hidden className="genre-option-icon genre-option-check" />
-                  )}
-                  <span>{item.isNew ? `„${item.genre}“ als neues Genre hinzufügen` : item.genre}</span>
-                </li>
+            <div id={listId} className="genre-picker-list" role="listbox" aria-multiselectable="true" aria-label="Genres">
+              {groups.map((group) => (
+                <ul key={group.label} className="genre-group" role="group" aria-label={group.label}>
+                  <li className="genre-group-label" role="presentation">
+                    {group.label}
+                  </li>
+                  {group.items.map((item) => {
+                    position += 1;
+                    const current = position;
+                    return (
+                      <li
+                        key={item.isNew ? `neu:${item.genre}` : genreKey(item.genre)}
+                        id={optionId(current)}
+                        role="option"
+                        aria-selected={item.selected}
+                        className={`genre-option${current === active ? ' genre-option-active' : ''}${item.isNew ? ' genre-option-new' : ''}`}
+                        onMouseMove={() => {
+                          if (current !== active) setActive(current);
+                        }}
+                        onClick={() => choose(current)}
+                      >
+                        {item.isNew ? (
+                          <Plus size={15} aria-hidden className="genre-option-icon" />
+                        ) : (
+                          <Check size={15} aria-hidden className="genre-option-icon genre-option-check" />
+                        )}
+                        <span className="genre-option-name">
+                          {item.isNew ? `„${item.genre}“ als eigenes Genre hinzufügen` : item.genre}
+                        </span>
+                        {item.detail && <span className="genre-option-detail">{item.detail}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
               ))}
-            </ul>
+              {query.trim() === '' && (
+                <p className="genre-picker-more">
+                  Tippen durchsucht alle {index.genres.length.toLocaleString('de-DE')} Genres der Liste, z. B. „punk“ oder „house“.
+                </p>
+              )}
+            </div>
           ) : (
-            <p className="genre-picker-empty">Noch keine Genres in der Bibliothek – einfach eintippen und mit Enter übernehmen.</p>
+            <p className="genre-picker-empty">Die Genre-Liste lädt noch – Genres lassen sich trotzdem eintippen.</p>
           )}
         </div>
       )}

@@ -91,12 +91,21 @@ function artistChart(stats: Stats): { rows: BarRow[]; table: TableView } {
   };
 }
 
-function genreChart(stats: Stats): { rows: BarRow[]; table: TableView } {
-  const total = stats.totals.songCount;
-  const named = stats.byGenre.filter((genre) => genre.genre !== null);
-  const unnamed = stats.byGenre.find((genre) => genre.genre === null)?.songCount ?? 0;
-  const top = named.slice(0, TOP_GENRES);
-  const rest = named.slice(TOP_GENRES);
+type GenreCount = Stats['byMainGenre'][number];
+
+/**
+ * Balken je Genre; was über die ersten Einträge hinausgeht, fasst „Weitere“ zusammen.
+ * noneLabel beschriftet die Songs ohne Angabe.
+ */
+function genreChart(
+  counts: readonly GenreCount[],
+  total: number,
+  options: { limit: number; columnLabel: string; noneLabel: string },
+): { rows: BarRow[]; table: TableView } {
+  const named = counts.filter((genre) => genre.genre !== null);
+  const unnamed = counts.find((genre) => genre.genre === null)?.songCount ?? 0;
+  const top = named.slice(0, options.limit);
+  const rest = named.slice(options.limit);
   const restCount = rest.reduce((sum, genre) => sum + genre.songCount, 0);
 
   const rows: BarRow[] = top.map((genre) => ({
@@ -120,7 +129,7 @@ function genreChart(stats: Stats): { rows: BarRow[]; table: TableView } {
   if (unnamed > 0) {
     rows.push({
       key: 'none',
-      label: 'Ohne Angabe',
+      label: options.noneLabel,
       muted: true,
       value: unnamed,
       valueLabel: number(unnamed),
@@ -130,8 +139,8 @@ function genreChart(stats: Stats): { rows: BarRow[]; table: TableView } {
   return {
     rows,
     table: {
-      columns: ['Genre', 'Songs', 'Anteil'],
-      rows: stats.byGenre.map((genre) => [genre.genre ?? 'Ohne Angabe', number(genre.songCount), percent(genre.songCount, total)]),
+      columns: [options.columnLabel, 'Songs', 'Anteil'],
+      rows: counts.map((genre) => [genre.genre ?? options.noneLabel, number(genre.songCount), percent(genre.songCount, total)]),
     },
   };
 }
@@ -252,7 +261,17 @@ export function StatsPage() {
 
   const categories = categoryChart(data);
   const artists = artistChart(data);
-  const genres = genreChart(data);
+  const mainGenres = genreChart(data.byMainGenre, data.totals.songCount, {
+    // Es gibt nur wenige Hauptgenres; alle bekommen einen eigenen Balken.
+    limit: 20,
+    columnLabel: 'Hauptgenre',
+    noneLabel: 'Ohne Genre',
+  });
+  const subgenres = genreChart(data.bySubgenre, data.totals.songCount, {
+    limit: TOP_GENRES,
+    columnLabel: 'Untergenre',
+    noneLabel: 'Ohne Untergenre',
+  });
   const decades = decadeColumns(data);
   const durations = durationColumns(data);
   const ratings = scaleColumns(
@@ -314,11 +333,19 @@ export function StatsPage() {
         </ChartCard>
 
         <ChartCard
-          title="Genres"
-          subtitle="Anzahl Songs je Genre; ein Song mit mehreren Genres zählt bei jedem mit."
-          table={genres.table}
+          title="Hauptgenres"
+          subtitle="Anzahl Songs je Hauptgenre; ein Song zählt bei jedem seiner Hauptgenres mit (Pop Rock bei Pop und Rock)."
+          table={mainGenres.table}
         >
-          <BarList rows={genres.rows} />
+          <BarList rows={mainGenres.rows} />
+        </ChartCard>
+
+        <ChartCard
+          title="Untergenres"
+          subtitle="Anzahl Songs je Untergenre, auch eigene Genres; ein Song mit mehreren zählt bei jedem mit."
+          table={subgenres.table}
+        >
+          <BarList rows={subgenres.rows} />
         </ChartCard>
 
         <ChartCard

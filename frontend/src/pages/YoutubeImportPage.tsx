@@ -122,10 +122,10 @@ function ImportResultCard({ result, preview }: { result: YoutubeImportResult; pr
         <CircleCheck size={16} aria-hidden /> „{preview.playlist.title}“ ist übernommen: {parts.join(', ')}.
       </p>
       <p className="field-hint">
-        Titel, Interpret und Dauer stammen von YouTube. Album, Genre und Jahr ergänzt die Online-Suche im Song-Dialog, die
-        Stimmung die Kategorien.
+        Titel, Interpret und Dauer stammen von YouTube. Album und Jahr ergänzt die Online-Suche im Song-Dialog, die Stimmung
+        die Kategorien.
         {result.createdSongs > 0 &&
-          ' Das Tempo (BPM) der neuen Songs wird gerade im Hintergrund auf songbpm.com nachgeschlagen und erscheint nach und nach in der Songliste.'}
+          ' Tempo (BPM) und Genres der neuen Songs werden gerade im Hintergrund auf songbpm.com und MusicBrainz nachgeschlagen und erscheinen nach und nach in der Songliste.'}
       </p>
       <div className="export-actions">
         {result.playlistId !== null && (

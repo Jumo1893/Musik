@@ -9,6 +9,8 @@ export interface Song {
   releaseYear: number | null;
   /** Kann leer sein; jede Schreibweise kommt höchstens einmal vor. */
   genres: string[];
+  /** Hauptgenres der Genres (Rock für Alternative Rock), in der Reihenfolge der Genre-Liste */
+  mainGenres: string[];
   bpm: number | null;
   /** 1 (ruhig) bis 5 (sehr energiegeladen) */
   energy: number | null;
@@ -60,6 +62,32 @@ export interface LookupResult {
   artworkUrl: string | null;
 }
 
+/** Eintrag der Genre-Liste für Auswahllisten. */
+export interface GenreInfo {
+  name: string;
+  /** Hauptgenre wie Rock; sonst Untergenre wie Alternative Rock */
+  isMain: boolean;
+  /** Hauptgenres eines Untergenres (bei Hauptgenres leer) */
+  mainGenres: string[];
+  /** Selbst eingetragen, nicht aus der Genre-Liste */
+  custom: boolean;
+  /** Andere Schreibweisen, z. B. „hip hop“ */
+  aliases: string[];
+}
+
+/** Genres eines Songs laut MusicBrainz. */
+export interface GenreMatch {
+  /** Zum Übernehmen, das wichtigste zuerst (höchstens drei) */
+  genres: string[];
+  /** Weitere Genres, die MusicBrainz für den Song nennt */
+  suggestions: string[];
+  /** Gefundene Aufnahme */
+  title: string;
+  artist: string;
+  /** Seite der Aufnahme auf musicbrainz.org */
+  url: string;
+}
+
 /** Tempo eines Songs laut songbpm.com, samt dem Eintrag, von dem es stammt. */
 export interface BpmMatch {
   bpm: number;
@@ -98,7 +126,10 @@ export interface Stats {
     averageBpm: number | null;
   }>;
   topArtists: Array<{ artist: string; songCount: number; totalDurationSeconds: number }>;
-  byGenre: Array<{ genre: string | null; songCount: number }>;
+  /** Songs je Hauptgenre; genre null: Songs ohne Hauptgenre */
+  byMainGenre: Array<{ genre: string | null; songCount: number }>;
+  /** Songs je Untergenre (und eigenem Genre); genre null: Songs ohne Untergenre */
+  bySubgenre: Array<{ genre: string | null; songCount: number }>;
   byDecade: Array<{ decade: number; songCount: number }>;
   byRating: Array<{ rating: number | null; songCount: number }>;
   byEnergy: Array<{ energy: number | null; songCount: number }>;

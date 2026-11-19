@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { HttpError } from '../errors.ts';
-import { coreTitle, parseSearchResults, pickBestMatch, searchText, SongBpmService, type BpmCandidate } from './songBpm.ts';
+import { parseSearchResults, pickBestMatch, SongBpmService, type BpmCandidate } from './songBpm.ts';
+import { coreTitle, searchText } from './songMatching.ts';
 
 /** Ein Treffer im Aufbau der Ergebnisseite von songbpm.com (gekürzt). */
 function card(path: string, artist: string, title: string, key: string, duration: string, bpm: string): string {

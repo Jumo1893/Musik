@@ -1,6 +1,7 @@
 import type { Queryable } from '../db.ts';
 import type { SongInput } from '../schemas.ts';
 import type { Song } from '../types.ts';
+import { prepareSongGenres } from './genreCatalog.ts';
 
 interface SongRow {
   id: number;
@@ -10,6 +11,7 @@ interface SongRow {
   duration_seconds: number | null;
   release_year: number | null;
   genres: string[];
+  main_genres: string[];
   bpm: number | null;
   energy: number | null;
   rating: number | null;
@@ -24,7 +26,8 @@ interface SongRow {
 }
 
 const SELECT_SONGS = `
-  SELECT s.id, s.title, s.artist, s.album, s.duration_seconds, s.release_year, s.genres, s.bpm,
+  SELECT s.id, s.title, s.artist, s.album, s.duration_seconds, s.release_year, s.genres,
+         song_main_genres(s.genres) AS main_genres, s.bpm,
          s.energy, s.rating, s.notes, s.apple_music_url, s.youtube_url, s.youtube_music_url,
          s.artwork_url, s.created_at, s.updated_at,
          COALESCE(
@@ -44,6 +47,7 @@ function toSong(row: SongRow): Song {
     durationSeconds: row.duration_seconds,
     releaseYear: row.release_year,
     genres: row.genres,
+    mainGenres: row.main_genres,
     bpm: row.bpm,
     energy: row.energy,
     rating: row.rating,
@@ -59,14 +63,14 @@ function toSong(row: SongRow): Song {
 }
 
 /** Reihenfolge entspricht den Platzhaltern $1 bis $14 in INSERT und UPDATE. */
-function columnValues(input: SongInput): unknown[] {
+function columnValues(input: SongInput, genres: string[]): unknown[] {
   return [
     input.title,
     input.artist,
     input.album,
     input.durationSeconds,
     input.releaseYear,
-    input.genres,
+    genres,
     input.bpm,
     input.energy,
     input.rating,
@@ -98,14 +102,15 @@ export async function getSong(db: Queryable, id: number): Promise<Song | null> {
   return row ? toSong(row) : null;
 }
 
-/** Muss in einer Transaktion laufen: Song und Kategorie-Zuordnungen gehören zusammen. */
+/** Muss in einer Transaktion laufen: Song, Kategorie-Zuordnungen und neue Genres gehören zusammen. */
 export async function createSong(db: Queryable, input: SongInput): Promise<Song> {
+  const genres = await prepareSongGenres(db, input.genres);
   const { rows } = await db.query<{ id: number }>(
     `INSERT INTO songs (title, artist, album, duration_seconds, release_year, genres, bpm, energy,
                         rating, notes, apple_music_url, youtube_url, youtube_music_url, artwork_url)
      VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING id`,
-    columnValues(input),
+    columnValues(input, genres),
   );
   const id = rows[0]!.id;
   await addCategories(db, id, input.categoryIds);
@@ -114,13 +119,14 @@ export async function createSong(db: Queryable, input: SongInput): Promise<Song>
 
 /** Muss in einer Transaktion laufen. Gibt null zurück, wenn es den Song nicht gibt. */
 export async function updateSong(db: Queryable, id: number, input: SongInput): Promise<Song | null> {
+  const genres = await prepareSongGenres(db, input.genres);
   const result = await db.query(
     `UPDATE songs
         SET title = $1, artist = $2, album = $3, duration_seconds = $4, release_year = $5,
             genres = $6::text[], bpm = $7, energy = $8, rating = $9, notes = $10, apple_music_url = $11,
             youtube_url = $12, youtube_music_url = $13, artwork_url = $14, updated_at = now()
       WHERE id = $15`,
-    [...columnValues(input), id],
+    [...columnValues(input, genres), id],
   );
   if (result.rowCount === 0) return null;
   await db.query('DELETE FROM song_categories WHERE song_id = $1', [id]);

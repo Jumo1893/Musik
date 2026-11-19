@@ -4,15 +4,16 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage } from '../api.ts';
 import { formatDuration, parseDuration } from '../lib/format.ts';
 import { extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform } from '../lib/links.ts';
-import { addGenre, distinctGenres } from '../lib/songs.ts';
-import { useCategories, useConfig, useDeleteSong, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
+import { sameGenres, type GenreIndex } from '../lib/genres.ts';
+import { addGenre, distinctGenres, genreKey } from '../lib/songs.ts';
+import { useCategories, useConfig, useDeleteSong, useGenreIndex, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
 import type { LookupResult, Song, SongInput } from '../types.ts';
 import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.tsx';
 import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
 import { OnlineSearch } from './OnlineSearch.tsx';
 import { Artwork, ChipToggle, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput } from './ui.tsx';
-import { useBpmLookup } from './useBpmLookup.ts';
+import { useOnlineLookup } from './useOnlineLookup.ts';
 
 /** Zustand des Formulars: Texte so, wie sie in den Feldern stehen. */
 interface FormState {
@@ -31,6 +32,11 @@ interface FormState {
   youtubeMusicUrl: string;
   artworkUrl: string;
   categoryIds: number[];
+  /**
+   * Genres, die eine Suche eingetragen hat (Treffer der Online-Suche oder MusicBrainz), samt dem
+   * Song, zu dem sie gehören. Solange sie unverändert im Feld stehen, darf eine neue Suche sie ersetzen.
+   */
+  autoGenres: { genres: string[]; song: string } | null;
 }
 
 type Errors = Record<string, string | undefined>;
@@ -51,6 +57,7 @@ const EMPTY_FORM: FormState = {
   youtubeMusicUrl: '',
   artworkUrl: '',
   categoryIds: [],
+  autoGenres: null,
 };
 
 function formFromSong(song: Song): FormState {
@@ -70,11 +77,36 @@ function formFromSong(song: Song): FormState {
     youtubeMusicUrl: song.youtubeMusicUrl ?? '',
     artworkUrl: song.artworkUrl ?? '',
     categoryIds: song.categoryIds,
+    autoGenres: null,
   };
 }
 
+/** Kennung eines Songs für die Online-Suchen; dieselbe wie in useOnlineLookup. */
+function songKey(artist: string, title: string): string {
+  return `${artist.trim().toLowerCase()}|${title.trim().toLowerCase()}`;
+}
+
+/** Die Genres dürfen automatisch ersetzt werden: Das Feld ist leer oder enthält nur, was eine Suche eingetragen hat. */
+function genresReplaceable(form: FormState): boolean {
+  return form.genres.length === 0 || (form.autoGenres !== null && sameGenres(form.genres, form.autoGenres.genres));
+}
+
 /** Übernimmt einen Treffer der Online-Suche; was der Treffer nicht kennt, bleibt wie es ist. */
-function applyLookup(form: FormState, result: LookupResult): FormState {
+function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreIndex): FormState {
+  // iTunes nennt ein grobes Genre („Hip-Hop/Rap“); es kommt in der Schreibweise der Genre-Liste.
+  const genre = result.genre ? genreIndex.canonical(result.genre) : null;
+  const song = songKey(result.artist, result.title);
+  let { genres, autoGenres } = form;
+  if (genresReplaceable(form)) {
+    // Was eine Suche schon für genau diesen Song eingetragen hat, bleibt; sonst gilt das Genre des Treffers.
+    if (form.genres.length === 0 || form.autoGenres?.song !== song) {
+      genres = genre ? [genre] : [];
+      autoGenres = genre ? { genres, song } : null;
+    }
+  } else if (genre && !genreIndex.mainGenresOfAll(form.genres).includes(genre)) {
+    // Selbst gewählte Genres bleiben; das Genre des Treffers kommt dazu, falls es nicht schon drinsteckt.
+    genres = addGenre(form.genres, genre);
+  }
   return {
     ...form,
     title: result.title,
@@ -82,8 +114,8 @@ function applyLookup(form: FormState, result: LookupResult): FormState {
     album: result.album ?? form.album,
     duration: result.durationSeconds === null ? form.duration : formatDuration(result.durationSeconds),
     releaseYear: result.releaseYear === null ? form.releaseYear : String(result.releaseYear),
-    // Ein Song kann mehrere Genres haben: Das Genre des Treffers kommt dazu, statt die Auswahl zu ersetzen.
-    genres: result.genre ? addGenre(form.genres, result.genre) : form.genres,
+    genres,
+    autoGenres,
     appleMusicUrl: result.appleMusicUrl ?? form.appleMusicUrl,
     artworkUrl: result.artworkUrl ?? form.artworkUrl,
   };
@@ -238,13 +270,15 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
   const categories = useCategories();
   const songs = useSongs();
   const genreOptions = useMemo(() => distinctGenres(songs.data ?? []), [songs.data]);
+  const genreIndex = useGenreIndex();
   const queryClient = useQueryClient();
   const youtubeStatus = useYoutubeStatus();
   const youtubeSearch = useMutation({
     mutationFn: (hints: Parameters<typeof api.youtube.search>[0]) => api.youtube.search(hints),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['youtube', 'status'] }),
   });
-  const bpmLookup = useBpmLookup();
+  const bpmLookup = useOnlineLookup(api.lookupBpm);
+  const genreLookup = useOnlineLookup(api.lookupGenres);
   const saveSong = useSaveSong();
   const deleteSong = useDeleteSong();
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -291,6 +325,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
           setForm(EMPTY_FORM);
           setSearchKey((key) => key + 1);
           bpmLookup.reset();
+          genreLookup.reset();
           setSavedNote(`„${saved.title}“ ist gespeichert.`);
         },
         onError: (err) => {
@@ -335,6 +370,43 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
     }
   }
 
+  /**
+   * Schlägt die Genres auf MusicBrainz nach, sobald Titel und Interpret feststehen. Selbst
+   * gewählte Genres bleiben; ersetzt werden nur ein leeres Feld oder Genres, die eine Suche
+   * eingetragen hat. Mit force wird auch dann gesucht – das Ergebnis erscheint als Vorschläge.
+   */
+  function lookUpGenres(next: FormState, force = false) {
+    const title = next.title.trim();
+    const artist = next.artist.trim();
+    if (!title || !artist) return;
+    if (!force && !genresReplaceable(next)) return;
+
+    const song = songKey(artist, title);
+    const duration = parseDuration(next.duration);
+    const started = genreLookup.search(
+      { title, artist, durationSeconds: duration.ok ? duration.seconds : null },
+      (match) =>
+        setForm((current) =>
+          genresReplaceable(current) ? { ...current, genres: match.genres, autoGenres: { genres: match.genres, song } } : current,
+        ),
+      force,
+    );
+    // Genres, die eine Suche für einen anderen Song eingetragen hat, passen nicht mehr.
+    if (started && next.autoGenres && next.autoGenres.song !== song) {
+      setForm((current) =>
+        current.autoGenres && current.autoGenres.song !== song && sameGenres(current.genres, current.autoGenres.genres)
+          ? { ...current, genres: [], autoGenres: null }
+          : current,
+      );
+    }
+  }
+
+  /** Tempo und Genres online nachschlagen, sobald Titel und Interpret feststehen. */
+  function lookUpOnline(next: FormState) {
+    lookUpBpm(next);
+    lookUpGenres(next);
+  }
+
   const canSearchBpm = form.bpm.trim() === '' && form.title.trim() !== '' && form.artist.trim() !== '';
   let bpmHint: ReactNode = 'Tempo, falls bekannt';
   if (bpmLookup.state.status === 'searching') {
@@ -361,6 +433,61 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
       </span>
     );
   }
+
+  const mainGenres = genreIndex.mainGenresOfAll(form.genres);
+  const genreMatch = genreLookup.state.status === 'found' ? genreLookup.state.match : null;
+  const canSearchGenres = form.title.trim() !== '' && form.artist.trim() !== '';
+  let genreStatus: ReactNode = null;
+  if (genreLookup.state.status === 'searching') {
+    genreStatus = <span role="status">Suche Genres auf MusicBrainz …</span>;
+  } else if (genreMatch) {
+    const chosen = new Set(form.genres.map(genreKey));
+    const suggestions = [...genreMatch.genres, ...genreMatch.suggestions].filter((genre) => !chosen.has(genreKey(genre))).slice(0, 6);
+    genreStatus = (
+      <span role="status">
+        {sameGenres(form.genres, genreMatch.genres) ? 'Laut ' : 'Gefunden auf '}
+        <a href={genreMatch.url} target="_blank" rel="noopener noreferrer" title={`Treffer: ${genreMatch.artist} – ${genreMatch.title}`}>
+          MusicBrainz
+        </a>
+        {suggestions.length > 0 && (
+          <>
+            {' · Weitere: '}
+            {suggestions.map((genre) => (
+              <button
+                key={genre}
+                type="button"
+                className="genre-suggestion"
+                title={`„${genre}“ hinzufügen`}
+                onClick={() => set('genres', addGenre(form.genres, genre))}
+              >
+                <Plus size={12} aria-hidden />
+                {genre}
+              </button>
+            ))}
+          </>
+        )}
+      </span>
+    );
+  } else if (canSearchGenres && genreLookup.state.status === 'notFound') {
+    genreStatus = <span role="status">Auf MusicBrainz nichts gefunden</span>;
+  } else if (canSearchGenres) {
+    genreStatus = (
+      <span role={genreLookup.state.status === 'error' ? 'alert' : undefined}>
+        {genreLookup.state.status === 'error' && 'MusicBrainz nicht erreichbar. '}
+        <button type="button" className="link-button" onClick={() => lookUpGenres(form, true)}>
+          {genreLookup.state.status === 'error' ? 'Nochmal versuchen' : 'Auf MusicBrainz suchen'}
+        </button>
+      </span>
+    );
+  }
+  const genreHint = (
+    <>
+      {mainGenres.length > 0
+        ? `${mainGenres.length === 1 ? 'Hauptgenre' : 'Hauptgenres'}: ${mainGenres.join(', ')}`
+        : 'Aus der Liste wählen oder eintippen.'}
+      {genreStatus && <> · {genreStatus}</>}
+    </>
+  );
 
   // Mit verbundenem YouTube-Konto sucht der Knopf neben dem YouTube-Feld direkt in der App.
   const youtubeReady = Boolean(youtubeStatus.data?.configured && youtubeStatus.data.connected && !youtubeStatus.data.expired);
@@ -424,8 +551,8 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
             key={searchKey}
             autoFocus={!song}
             onPick={(result) => {
-              setForm((current) => applyLookup(current, result));
-              lookUpBpm(applyLookup(form, result));
+              setForm((current) => applyLookup(current, result, genreIndex));
+              lookUpOnline(applyLookup(form, result, genreIndex));
               setErrors({});
               setFormError(null);
               setSavedNote(null);
@@ -441,7 +568,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 maxLength={300}
                 data-autofocus={song ? true : undefined}
                 onChange={(event) => set('title', event.target.value)}
-                onBlur={() => lookUpBpm(form)}
+                onBlur={() => lookUpOnline(form)}
               />
             </Field>
             <Field label="Interpret" htmlFor={`${id}-artist`} error={errors.artist} className="span-3">
@@ -451,7 +578,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 value={form.artist}
                 maxLength={300}
                 onChange={(event) => set('artist', event.target.value)}
-                onBlur={() => lookUpBpm(form)}
+                onBlur={() => lookUpOnline(form)}
               />
             </Field>
             <Field label="Album" htmlFor={`${id}-album`} error={errors.album} className="span-3">
@@ -467,13 +594,14 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
               label="Genres"
               htmlFor={`${id}-genre`}
               error={errors.genres}
-              hint="Mehrere möglich: aus der Liste wählen oder neu eintippen."
+              hint={genreHint}
               className="span-3"
             >
               <GenrePicker
                 id={`${id}-genre`}
                 value={form.genres}
-                options={genreOptions}
+                index={genreIndex}
+                libraryGenres={genreOptions}
                 onChange={(genres) => set('genres', genres)}
               />
             </Field>

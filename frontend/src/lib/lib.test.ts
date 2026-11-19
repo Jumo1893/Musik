@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import type { Category, Song } from '../types.ts';
+import type { Category, GenreInfo, Song } from '../types.ts';
 import { toCsv, toFilename } from './csv.ts';
 import { formatCount, formatDuration, formatTotalDuration, parseDuration } from './format.ts';
+import { GenreIndex, libraryGenreGroups, sameGenres } from './genres.ts';
 import { extractYoutubeId, searchUrl, streamingLinks, youtubeQueueUrl, YOUTUBE_QUEUE_LIMIT } from './links.ts';
 import {
   addGenre,
   distinctGenres,
   filterSongs,
-  matchGenres,
   mergeGenres,
   normalizeText,
   removeGenre,
@@ -28,6 +28,7 @@ function song(overrides: Partial<Song> = {}): Song {
     durationSeconds: null,
     releaseYear: null,
     genres: [],
+    mainGenres: [],
     bpm: null,
     energy: null,
     rating: null,
@@ -208,8 +209,21 @@ describe('CSV', () => {
 });
 
 describe('Songliste', () => {
-  const hurt = song({ title: 'Hurt', artist: 'Johnny Cash', album: 'American IV', genres: ['Country'], categoryIds: [1, 2] });
-  const maedchen = song({ title: 'Mädchen', artist: 'Lucilectric', genres: ['Pop', 'Neue Deutsche Welle'], categoryIds: [2] });
+  const hurt = song({
+    title: 'Hurt',
+    artist: 'Johnny Cash',
+    album: 'American IV',
+    genres: ['Country'],
+    mainGenres: ['Country'],
+    categoryIds: [1, 2],
+  });
+  const maedchen = song({
+    title: 'Mädchen',
+    artist: 'Lucilectric',
+    genres: ['Pop', 'Neue Deutsche Welle'],
+    mainGenres: ['Pop', 'Electronic'],
+    categoryIds: [2],
+  });
   const africa = song({ title: 'Africa', artist: 'Toto', categoryIds: [] });
   const all = [hurt, maedchen, africa];
   const noFilter = { text: '', categoryIds: [], onlyUncategorized: false };
@@ -228,6 +242,8 @@ describe('Songliste', () => {
     expect(search('MÄDCHEN')).toEqual(['Mädchen']);
     expect(search('pop')).toEqual(['Mädchen']);
     expect(search('deutsche welle')).toEqual(['Mädchen']);
+    // Auch das Hauptgenre zählt, obwohl es nicht am Song steht.
+    expect(search('electronic')).toEqual(['Mädchen']);
     expect(search('hurt toto')).toEqual([]);
   });
 
@@ -283,33 +299,95 @@ describe('Songliste', () => {
     expect(mergeGenres([], [])).toEqual([]);
   });
 
-  test('addGenre und removeGenre achten nicht auf Groß-/Kleinschreibung', () => {
+  test('addGenre und removeGenre achten nicht auf Groß-/Kleinschreibung und Satzzeichen', () => {
     expect(addGenre(['Pop'], ' Dance ')).toEqual(['Pop', 'Dance']);
     expect(addGenre(['Pop'], 'POP')).toEqual(['Pop']);
+    expect(addGenre(['Hip-Hop'], 'hip hop')).toEqual(['Hip-Hop']);
     expect(addGenre(['Pop'], '   ')).toEqual(['Pop']);
     expect(removeGenre(['Pop', 'Dance'], 'dance')).toEqual(['Pop']);
   });
 
-  test('matchGenres findet Teile ohne Rücksicht auf Akzente; Treffer am Anfang stehen vorn', () => {
-    const genres = ['Dance', 'Electropop', 'Hip-Hop/Rap', 'Pop', 'Pop soul', 'Schlager', 'Électro'];
-    expect(matchGenres(genres, '')).toEqual(genres);
-    expect(matchGenres(genres, 'pop')).toEqual(['Pop', 'Pop soul', 'Electropop']);
-    expect(matchGenres(genres, 'hop')).toEqual(['Hip-Hop/Rap']);
-    expect(matchGenres(genres, 'electro')).toEqual(['Electropop', 'Électro']);
-    expect(matchGenres(genres, 'jazz')).toEqual([]);
-  });
-
-  test('songCsvRow schreibt Genres und Kategorien als Namen', () => {
+  test('songCsvRow schreibt Genres, Hauptgenres und Kategorien als Namen', () => {
     const categories = new Map<number, Category>([
       [1, { id: 1, name: 'ruhig', color: '#2a78d6', description: null, songCount: 1 }],
       [2, { id: 2, name: 'Abend', color: '#eb6834', description: null, songCount: 2 }],
     ]);
     const row = songCsvRow(
-      { ...hurt, durationSeconds: 217, rating: 5, genres: ['Country', 'Folk'], categoryIds: [1, 2, 99] },
+      { ...hurt, durationSeconds: 217, rating: 5, genres: ['Country Rock', 'Folk'], mainGenres: ['Rock', 'Country', 'Folk'], categoryIds: [1, 2, 99] },
       categories,
     );
     expect(row.slice(0, 5)).toEqual(['Hurt', 'Johnny Cash', 'American IV', '3:37', 217]);
-    expect(row[6]).toBe('Country, Folk');
-    expect(row[10]).toBe('Abend, ruhig');
+    expect(row[6]).toBe('Country Rock, Folk');
+    expect(row[7]).toBe('Rock, Country, Folk');
+    expect(row[11]).toBe('Abend, ruhig');
+  });
+});
+
+describe('Genre-Liste', () => {
+  const info = (name: string, overrides: Partial<GenreInfo> = {}): GenreInfo => ({
+    name,
+    isMain: false,
+    mainGenres: [],
+    custom: false,
+    aliases: [],
+    ...overrides,
+  });
+  const index = new GenreIndex([
+    info('Pop', { isMain: true }),
+    info('Rock', { isMain: true }),
+    info('Hip-Hop', { isMain: true, aliases: ['rap', 'hip-hop/rap'] }),
+    info('Electronic', { isMain: true }),
+    info('Alternative Rock', { mainGenres: ['Rock'], aliases: ['alternative'] }),
+    info('Pop Rock', { mainGenres: ['Pop', 'Rock'] }),
+    info('Punk Rock', { mainGenres: ['Rock'], aliases: ['punk'] }),
+    info('Pop-Punk', { mainGenres: ['Pop', 'Rock'] }),
+    info('Rock and Roll', { mainGenres: ['Rock'] }),
+    info('EDM', { mainGenres: ['Electronic'], aliases: ['electronic dance music', 'dance'] }),
+    info('Électro', { mainGenres: ['Electronic', 'Hip-Hop'] }),
+    info('New wave pop', { custom: true, mainGenres: ['Pop'] }),
+  ]);
+
+  test('ordnet Schreibweisen den Genres der Liste zu', () => {
+    expect(index.canonical('hip hop')).toBe('Hip-Hop');
+    expect(index.canonical('Hip-Hop/Rap')).toBe('Hip-Hop');
+    expect(index.canonical('ALTERNATIVE')).toBe('Alternative Rock');
+    expect(index.canonical(' Polka ')).toBe('Polka');
+    expect(index.mainGenresOf('pop rock')).toEqual(['Pop', 'Rock']);
+    expect(index.mainGenresOf('Rock')).toEqual(['Rock']);
+    expect(index.mainGenresOf('Polka')).toEqual([]);
+    expect(index.mainGenresOfAll(['Électro', 'Pop Rock', 'Polka'])).toEqual(['Pop', 'Rock', 'Hip-Hop', 'Electronic']);
+  });
+
+  test('die Suche bevorzugt Treffer am Anfang, Hauptgenres und kurze Namen', () => {
+    const names = (query: string) => index.search(query).map((genre) => genre.name);
+    expect(names('rock')).toEqual(['Rock', 'Rock and Roll', 'Pop Rock', 'Punk Rock', 'Alternative Rock']);
+    // Eine genau passende Schreibweise steht vorn, auch vor Namen, die mit dem Wort beginnen.
+    expect(names('punk')).toEqual(['Punk Rock', 'Pop-Punk']);
+    expect(names('rap')).toEqual(['Hip-Hop']);
+    expect(names('dance')).toEqual(['EDM']);
+    expect(names('electro')).toEqual(['Électro', 'Electronic', 'EDM']);
+    expect(names('ternat')).toEqual(['Alternative Rock']);
+    expect(names('  ')).toEqual([]);
+  });
+
+  test('sameGenres vergleicht ohne Reihenfolge und Schreibweise', () => {
+    expect(sameGenres(['Pop', 'Hip-Hop'], ['hip hop', 'pop'])).toBe(true);
+    expect(sameGenres(['Pop'], ['Pop', 'Rock'])).toBe(false);
+    expect(sameGenres([], [])).toBe(true);
+  });
+
+  test('die Genres der Bibliothek stehen beim jeweiligen Hauptgenre', () => {
+    const songs = [
+      song({ genres: ['Pop Rock'], mainGenres: ['Pop', 'Rock'] }),
+      song({ genres: ['Punk Rock', 'Hip-Hop'], mainGenres: ['Rock', 'Hip-Hop'] }),
+      song({ genres: ['Mein Genre'], mainGenres: [] }),
+      song({ genres: ['New wave pop'], mainGenres: ['Pop'] }),
+    ];
+    expect(libraryGenreGroups(songs, index)).toEqual([
+      { main: 'Pop', subgenres: ['New wave pop', 'Pop Rock'] },
+      { main: 'Rock', subgenres: ['Pop Rock', 'Punk Rock'] },
+      { main: 'Hip-Hop', subgenres: [] },
+      { main: null, subgenres: ['Mein Genre'] },
+    ]);
   });
 });

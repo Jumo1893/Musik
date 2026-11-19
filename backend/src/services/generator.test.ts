@@ -21,6 +21,7 @@ function song(overrides: Partial<GeneratorSong> = {}): GeneratorSong {
     durationSeconds: 200,
     releaseYear: 2000,
     genres: ['Pop'],
+    mainGenres: ['Pop'],
     energy: 3,
     rating: 3,
     categoryIds: [],
@@ -102,6 +103,17 @@ describe('Filter', () => {
     const jazz = song({ genres: ['Jazz'] });
     const picked = ids(pick([popRock, danceOnly, jazz], { genres: ['rock', 'Dance'] }));
     assert.deepEqual(new Set(picked), new Set([popRock.id, danceOnly.id]));
+  });
+
+  test('ein gewünschtes Hauptgenre umfasst seine Untergenres, ein Untergenre nur sich selbst', () => {
+    const alternative = song({ genres: ['Alternative Rock'], mainGenres: ['Rock'] });
+    const popRock = song({ genres: ['Pop Rock'], mainGenres: ['Pop', 'Rock'] });
+    const punk = song({ genres: ['Punk Rock'], mainGenres: ['Rock'] });
+    const pop = song({ genres: ['Pop'], mainGenres: ['Pop'] });
+    const songs = [alternative, popRock, punk, pop];
+    assert.deepEqual(new Set(ids(pick(songs, { genres: ['Rock'] }))), new Set([alternative.id, popRock.id, punk.id]));
+    assert.deepEqual(new Set(ids(pick(songs, { genres: ['Pop'] }))), new Set([popRock.id, pop.id]));
+    assert.deepEqual(ids(pick(songs, { genres: ['Punk Rock'] })), [punk.id]);
   });
 
   test('Mindestbewertung schließt schlechter bewertete und unbewertete Songs aus', () => {

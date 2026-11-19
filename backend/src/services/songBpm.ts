@@ -8,6 +8,8 @@
 import type { Queryable } from '../db.ts';
 import { HttpError } from '../errors.ts';
 import type { BpmMatch } from '../types.ts';
+import { SongQueue } from './songQueue.ts';
+import { artistScore, isOtherVersion, searchText, simplify, titleScore, type SongQuery } from './songMatching.ts';
 
 const BASE_URL = 'https://songbpm.com';
 const TIMEOUT_MS = 8000;
@@ -31,12 +33,6 @@ export interface BpmCandidate {
   bpm: number;
   /** Pfad der Song-Seite, z. B. /@johnny-cash/hurt */
   path: string;
-}
-
-export interface BpmQuery {
-  title: string;
-  artist: string;
-  durationSeconds?: number | null | undefined;
 }
 
 // --- Ergebnisseite auswerten -------------------------------------------------
@@ -95,72 +91,12 @@ export function parseSearchResults(html: string): BpmCandidate[] {
 
 // --- Passenden Treffer wählen ------------------------------------------------
 
-/** Kleinschreibung, ohne Akzente und Satzzeichen – so lassen sich Schreibweisen vergleichen. */
-function simplify(text: string): string {
-  return text
-    .normalize('NFKD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/ß/g, 'ss')
-    .replace(/&/g, ' and ')
-    .replace(/[’']/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .trim();
-}
-
-const FEATURING = /\s(?:feat\.?|ft\.?|featuring)\s.*$/i;
-
-/** Titel ohne Zusätze wie „(feat. …)“, „[Remastered]“ oder „- Radio Edit“. */
-export function coreTitle(title: string): string {
-  const core = simplify(
-    title
-      .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
-      .replace(/\s[-–—]\s.*$/, '')
-      .replace(FEATURING, ''),
-  );
-  return core || simplify(title);
-}
-
-function simplifyArtist(artist: string): string {
-  return simplify(artist).replace(/^the /, '');
-}
-
-/** Einzelne Namen bei Zusammenarbeiten: „Macklemore & Ryan Lewis feat. Ray Dalton“ → drei Namen. */
-function artistNames(artist: string): string[] {
-  return artist
-    .split(/\s*(?:,|&|\+|\/|\band\b|\bund\b|\bfeat\.?|\bft\.?|\bfeaturing\b|\bwith\b|\bx\b|\bvs\.?)\s*/i)
-    .map(simplifyArtist)
-    .filter(Boolean);
-}
-
-/** 2: gleicher Interpret, 1: der Hauptinterpret einer Seite ist auch an der anderen beteiligt, 0: passt nicht. */
-function artistScore(wanted: string, found: string): number {
-  if (simplifyArtist(wanted) === simplifyArtist(found)) return 2;
-  const wantedNames = artistNames(wanted);
-  const foundNames = artistNames(found);
-  const [wantedMain] = wantedNames;
-  const [foundMain] = foundNames;
-  if (wantedMain && foundNames.includes(wantedMain)) return 1;
-  if (foundMain && wantedNames.includes(foundMain)) return 1;
-  return 0;
-}
-
-/** 2: gleicher Titel, 1: gleicher Titel ohne Zusätze, 0: passt nicht. */
-function titleScore(wanted: string, found: string): number {
-  if (simplify(wanted) === simplify(found)) return 2;
-  return coreTitle(wanted) === coreTitle(found) ? 1 : 0;
-}
-
-// Fassungen mit anderem Tempo: Die zählen nur, wenn genau so eine gesucht ist.
-const OTHER_TEMPO = /\b(?:remix|rmx|slowed|sped|speed up|nightcore|reverb|8d|type beat|bootleg)\b/;
-
 /**
  * Wählt den Treffer, der zum gesuchten Song passt: Interpret und Titel müssen stimmen.
  * Bei mehreren passenden entscheidet die Genauigkeit, dann die Dauer, dann die Reihenfolge
  * der Seite. Passt keiner, ist das Ergebnis null.
  */
-export function pickBestMatch(candidates: readonly BpmCandidate[], query: BpmQuery): BpmCandidate | null {
-  const wantedTitle = simplify(query.title);
+export function pickBestMatch(candidates: readonly BpmCandidate[], query: SongQuery): BpmCandidate | null {
   const wantedDuration = query.durationSeconds ?? null;
   let best: { candidate: BpmCandidate; score: number; durationGap: number } | null = null;
 
@@ -168,8 +104,7 @@ export function pickBestMatch(candidates: readonly BpmCandidate[], query: BpmQue
     const forArtist = artistScore(query.artist, candidate.artist);
     const forTitle = titleScore(query.title, candidate.title);
     if (forArtist === 0 || forTitle === 0) continue;
-    const otherTempo = OTHER_TEMPO.exec(simplify(candidate.title));
-    if (otherTempo && !wantedTitle.includes(otherTempo[0])) continue;
+    if (isOtherVersion(query.title, candidate.title)) continue;
 
     const score = forArtist + forTitle;
     const durationGap =
@@ -181,19 +116,6 @@ export function pickBestMatch(candidates: readonly BpmCandidate[], query: BpmQue
     }
   }
   return best?.candidate ?? null;
-}
-
-/** Suchtext für songbpm.com: Hauptinterpret und Titel ohne Zusätze treffen am zuverlässigsten. */
-export function searchText(query: BpmQuery): string {
-  const artist = query.artist.replace(FEATURING, '').trim() || query.artist.trim();
-  const title =
-    query.title
-      .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
-      .replace(/\s[-–—]\s.*$/, '')
-      .replace(FEATURING, '')
-      .replace(/\s+/g, ' ')
-      .trim() || query.title.trim();
-  return `${artist} ${title}`.slice(0, 200);
 }
 
 // --- Dienst ------------------------------------------------------------------
@@ -213,19 +135,22 @@ interface CacheEntry {
 export class SongBpmService {
   readonly #fetch: typeof fetch;
   readonly #baseUrl: string;
-  readonly #backgroundDelayMs: number;
   readonly #cache = new Map<string, CacheEntry>();
-  #queue: Array<{ db: Queryable; songId: number }> = [];
-  #worker: Promise<void> | null = null;
+  readonly #background: SongQueue;
 
   constructor(options: SongBpmOptions = {}) {
     this.#fetch = options.fetchFn ?? fetch;
     this.#baseUrl = options.baseUrl ?? BASE_URL;
-    this.#backgroundDelayMs = options.backgroundDelayMs ?? BACKGROUND_DELAY_MS;
+    this.#background = new SongQueue({
+      label: 'BPM',
+      delayMs: options.backgroundDelayMs ?? BACKGROUND_DELAY_MS,
+      maxFailures: BACKGROUND_MAX_FAILURES,
+      work: (db, songId) => this.#fillOne(db, songId),
+    });
   }
 
   /** Sucht das Tempo eines Songs. null: songbpm.com kennt den Song nicht. */
-  async lookup(query: BpmQuery): Promise<BpmMatch | null> {
+  async lookup(query: SongQuery): Promise<BpmMatch | null> {
     const match = pickBestMatch(await this.#search(searchText(query)), query);
     if (!match) return null;
     return {
@@ -280,55 +205,27 @@ export class SongBpmService {
 
   /**
    * Trägt im Hintergrund das Tempo der angegebenen Songs nach, soweit sie noch keins haben.
-   * Die Songs werden nacheinander und mit Pausen abgefragt; ein Neustart der App verwirft
-   * die Warteschlange.
+   * Die Songs werden nacheinander und mit Pausen abgefragt.
    */
   fillMissing(db: Queryable, songIds: readonly number[]): void {
-    if (songIds.length === 0) return;
-    this.#queue.push(...songIds.map((songId) => ({ db, songId })));
-    this.#worker ??= this.#work();
+    this.#background.add(db, songIds);
   }
 
   /** Wartet, bis das Nachtragen im Hintergrund fertig ist (für Tests). */
-  async idle(): Promise<void> {
-    while (this.#worker) await this.#worker;
+  idle(): Promise<void> {
+    return this.#background.idle();
   }
 
-  async #work(): Promise<void> {
-    try {
-      await this.#workThroughQueue();
-    } finally {
-      this.#worker = null;
-    }
-  }
-
-  async #workThroughQueue(): Promise<void> {
-    let failures = 0;
-    let first = true;
-    while (this.#queue.length > 0) {
-      const { db, songId } = this.#queue.shift()!;
-      try {
-        const { rows } = await db.query<{ title: string; artist: string; duration_seconds: number | null }>(
-          'SELECT title, artist, duration_seconds FROM songs WHERE id = $1 AND bpm IS NULL',
-          [songId],
-        );
-        const song = rows[0];
-        if (!song) continue;
-        if (!first) await new Promise((resolve) => setTimeout(resolve, this.#backgroundDelayMs));
-        first = false;
-
-        const match = await this.lookup({ title: song.title, artist: song.artist, durationSeconds: song.duration_seconds });
-        failures = 0;
-        // Hat inzwischen jemand ein Tempo eingetragen, bleibt es.
-        if (match) await db.query('UPDATE songs SET bpm = $1, updated_at = now() WHERE id = $2 AND bpm IS NULL', [match.bpm, songId]);
-      } catch (err) {
-        failures += 1;
-        console.warn(`BPM für Song ${songId} nicht nachgetragen:`, err instanceof Error ? err.message : err);
-        if (failures >= BACKGROUND_MAX_FAILURES) {
-          console.warn(`BPM-Nachtrag abgebrochen; ${this.#queue.length} Songs bleiben ohne Tempo.`);
-          this.#queue = [];
-        }
-      }
-    }
+  async #fillOne(db: Queryable, songId: number): Promise<boolean> {
+    const { rows } = await db.query<{ title: string; artist: string; duration_seconds: number | null }>(
+      'SELECT title, artist, duration_seconds FROM songs WHERE id = $1 AND bpm IS NULL',
+      [songId],
+    );
+    const song = rows[0];
+    if (!song) return false;
+    const match = await this.lookup({ title: song.title, artist: song.artist, durationSeconds: song.duration_seconds });
+    // Hat inzwischen jemand ein Tempo eingetragen, bleibt es.
+    if (match) await db.query('UPDATE songs SET bpm = $1, updated_at = now() WHERE id = $2 AND bpm IS NULL', [match.bpm, songId]);
+    return true;
   }
 }

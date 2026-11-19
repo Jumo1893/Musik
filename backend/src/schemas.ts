@@ -138,7 +138,7 @@ export const generatorCriteriaSchema = z.object({
   excludeCategoryIds: idList(200),
   /** Einzelne Songs, die nicht vorgeschlagen werden sollen. */
   excludeSongIds: idList(5000),
-  /** Erlaubte Genres; leer bedeutet „egal“. */
+  /** Erlaubte Genres (Haupt- oder Untergenres); leer bedeutet „egal“. */
   genres: z.array(z.string().trim().min(1).max(100)).max(200).default([]),
   minRating: optionalInt(1, 5),
   energyMin: optionalInt(1, 5),
@@ -170,7 +170,8 @@ export const lookupQuerySchema = z.object({
     .max(200),
 });
 
-export const bpmLookupQuerySchema = z.object({
+/** Angaben zum Song für die Online-Suche nach Tempo und Genres. */
+export const songLookupQuerySchema = z.object({
   title: z.string({ error: 'Bitte einen Titel angeben.' }).trim().min(1, 'Bitte einen Titel angeben.').max(300),
   artist: z.string({ error: 'Bitte einen Interpreten angeben.' }).trim().min(1, 'Bitte einen Interpreten angeben.').max(300),
   /** Dauer in Sekunden; hilft, unter mehreren Fassungen die richtige zu finden. */

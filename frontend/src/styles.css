@@ -878,7 +878,7 @@ a {
   top: calc(100% + 4px);
   right: 0;
   left: 0;
-  max-height: 260px;
+  max-height: 320px;
   padding: 4px;
   overflow-y: auto;
   border: 1px solid var(--border-strong);
@@ -934,6 +934,107 @@ a {
   padding: 6px 8px;
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+/* Gruppen der aufgeklappten Liste: „In deiner Bibliothek“, „Hauptgenres“, „Treffer“ */
+.genre-group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.genre-group + .genre-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.genre-group-label {
+  padding: 4px 8px 2px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.genre-option-name {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hauptgenre(s) eines Eintrags, rechts und gedämpft */
+.genre-option-detail {
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.genre-picker-more {
+  margin: 4px 0 0;
+  padding: 6px 8px 2px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+/* Vorschläge von MusicBrainz unter dem Genre-Feld: ein Klick fügt das Genre hinzu. */
+.genre-suggestion {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  margin: 2px 4px 0 0;
+  padding: 0 7px 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.genre-suggestion:hover {
+  background: var(--hover);
+}
+
+.genre-suggestion svg {
+  color: var(--accent-text);
+}
+
+/* Generator: eine Zeile je Hauptgenre, dahinter seine Untergenres aus der Bibliothek */
+.genre-groups {
+  display: grid;
+  gap: 8px;
+}
+
+.genre-group-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.genre-main-chip {
+  font-weight: 600;
+}
+
+.genre-sub-chip {
+  height: 24px;
+  font-size: 12.5px;
+}
+
+.genre-group-none {
+  padding-right: 2px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .swatches {

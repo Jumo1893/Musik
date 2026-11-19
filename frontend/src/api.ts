@@ -3,6 +3,8 @@
 import type {
   AppConfig,
   BpmMatch,
+  GenreInfo,
+  GenreMatch,
   YoutubeImportInput,
   YoutubeImportPreview,
   YoutubeImportResult,
@@ -96,6 +98,19 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
   return data as T;
 }
 
+/** Angaben zum Song für die Online-Suche nach Tempo und Genres */
+export interface SongLookupQuery {
+  title: string;
+  artist: string;
+  durationSeconds: number | null;
+}
+
+function songLookupParams(song: SongLookupQuery): URLSearchParams {
+  const params = new URLSearchParams({ title: song.title, artist: song.artist });
+  if (song.durationSeconds) params.set('duration', String(song.durationSeconds));
+  return params;
+}
+
 export const api = {
   songs: {
     list: () => request<Song[]>('GET', '/songs'),
@@ -118,6 +133,7 @@ export const api = {
       request<GeneratorResult>('POST', '/playlists/generate', criteria, signal),
   },
   stats: () => request<Stats>('GET', '/stats'),
+  genres: () => request<GenreInfo[]>('GET', '/genres'),
   config: () => request<AppConfig>('GET', '/config'),
   youtube: {
     status: () => request<YoutubeStatus>('GET', '/youtube/status'),
@@ -145,9 +161,9 @@ export const api = {
   lookup: (term: string, signal?: AbortSignal) =>
     request<LookupResult[]>('GET', `/lookup/itunes?term=${encodeURIComponent(term)}`, undefined, signal),
   /** Tempo auf songbpm.com; match ist null, wenn der Song dort unbekannt ist. */
-  lookupBpm: (song: { title: string; artist: string; durationSeconds: number | null }, signal?: AbortSignal) => {
-    const params = new URLSearchParams({ title: song.title, artist: song.artist });
-    if (song.durationSeconds) params.set('duration', String(song.durationSeconds));
-    return request<{ match: BpmMatch | null }>('GET', `/lookup/bpm?${params}`, undefined, signal);
-  },
+  lookupBpm: (song: SongLookupQuery, signal?: AbortSignal) =>
+    request<{ match: BpmMatch | null }>('GET', `/lookup/bpm?${songLookupParams(song)}`, undefined, signal),
+  /** Genres auf MusicBrainz; match ist null, wenn MusicBrainz den Song nicht kennt. */
+  lookupGenres: (song: SongLookupQuery, signal?: AbortSignal) =>
+    request<{ match: GenreMatch | null }>('GET', `/lookup/genres?${songLookupParams(song)}`, undefined, signal),
 };

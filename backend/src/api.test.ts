@@ -16,6 +16,7 @@ import { createApp } from './app.ts';
 import { config } from './config.ts';
 import { createPool, type Pool } from './db.ts';
 import { MIGRATIONS_DIR, migrate } from './migrate.ts';
+import { GenreLookupService } from './services/genreLookup.ts';
 import { SongBpmService } from './services/songBpm.ts';
 import { YoutubeService } from './services/youtube.ts';
 import { FakeGoogle } from './testing/fakeGoogle.ts';
@@ -72,6 +73,50 @@ describe('API', { skip: unavailable ?? false }, () => {
       return new Response(card('Rick Astley', 'Never Gonna Give You Up', 113) + card('Ed Sheeran', 'Shape of You', 96));
     }) as typeof fetch,
   });
+  /** Nachgebautes MusicBrainz: kennt zwei Aufnahmen, die gestellten Suchen werden mitgeschrieben. */
+  const genreSearches: string[] = [];
+  const genreLookup = new GenreLookupService({
+    minIntervalMs: 0,
+    retryDelayMs: 0,
+    backgroundDelayMs: 0,
+    fetchFn: (async (input: unknown) => {
+      const url = new URL(String(input));
+      const query = url.searchParams.get('query') ?? '';
+      genreSearches.push(query);
+      const known = [
+        {
+          id: 'warriors-1',
+          title: 'Warriors',
+          artist: 'Imagine Dragons',
+          tags: [
+            { name: 'alternative rock', count: 7 },
+            { name: 'pop', count: 4 },
+            { name: 'league of legends', count: 9 },
+          ],
+        },
+        {
+          id: 'rick-1',
+          title: 'Never Gonna Give You Up',
+          artist: 'Rick Astley',
+          tags: [
+            { name: 'dance-pop', count: 3 },
+            { name: 'pop', count: 1 },
+          ],
+        },
+      ];
+      const recordings = known
+        .filter((song) => query.includes(`"${song.title}"`))
+        .map((song) => ({
+          id: song.id,
+          score: 100,
+          title: song.title,
+          'artist-credit': [{ name: song.artist, artist: { id: '00000000-0000-0000-0000-000000000000', name: song.artist } }],
+          releases: [],
+          tags: song.tags,
+        }));
+      return Response.json({ recordings });
+    }) as typeof fetch,
+  });
   const REDIRECT_URI = 'http://localhost:8090/api/youtube/callback';
 
   // Kategorien, die vor jedem Test frisch angelegt werden (IDs 1 bis 3).
@@ -116,6 +161,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       itunesCountry: 'de',
       youtube,
       songBpm,
+      genreLookup,
       allowedHosts: ['localhost', '127.0.0.1', '[::1]'],
     });
     server = app.listen(0, '127.0.0.1');
@@ -133,7 +179,9 @@ describe('API', { skip: unavailable ?? false }, () => {
   beforeEach(async () => {
     // Nachträge im Hintergrund dürfen nicht in den nächsten Test hineinlaufen.
     await songBpm.idle();
+    await genreLookup.idle();
     bpmSearches.length = 0;
+    genreSearches.length = 0;
     await pool.query(
       'TRUNCATE songs, playlists, categories, youtube_account, youtube_quota_usage RESTART IDENTITY CASCADE',
     );
@@ -165,19 +213,30 @@ describe('API', { skip: unavailable ?? false }, () => {
           if (file < '004') await copyFile(join(MIGRATIONS_DIR, file), join(oldDir, file));
         }
         await migrate(oldPool, oldDir);
-        await oldPool.query(`INSERT INTO songs (title, artist, genre) VALUES ('a', 'x', ' Pop '), ('b', 'x', '  '), ('c', 'x', NULL)`);
+        await oldPool.query(
+          `INSERT INTO songs (title, artist, genre)
+           VALUES ('a', 'x', ' Pop '), ('b', 'x', '  '), ('c', 'x', NULL), ('d', 'x', 'Hip-Hop/Rap'),
+                  ('e', 'x', 'indie pop'), ('f', 'x', 'New wave pop')`,
+        );
         await oldPool.query(`INSERT INTO categories (name, color) VALUES ('sommer', '#123456')`);
 
         const applied = await migrate(oldPool);
         assert.ok(applied.includes('004_mehrere_genres.sql'));
         assert.ok(applied.includes('005_weitere_kategorien.sql'));
+        assert.ok(applied.includes('006_genres.sql'));
 
-        const songs = await oldPool.query('SELECT title, genres FROM songs ORDER BY title');
+        // Schreibweisen der Genre-Liste; was die Liste nicht kennt, bleibt als eigenes Genre.
+        const songs = await oldPool.query('SELECT title, genres, song_main_genres(genres) AS main FROM songs ORDER BY title');
         assert.deepEqual(songs.rows, [
-          { title: 'a', genres: ['Pop'] },
-          { title: 'b', genres: [] },
-          { title: 'c', genres: [] },
+          { title: 'a', genres: ['Pop'], main: ['Pop'] },
+          { title: 'b', genres: [], main: [] },
+          { title: 'c', genres: [], main: [] },
+          { title: 'd', genres: ['Hip-Hop'], main: ['Hip-Hop'] },
+          { title: 'e', genres: ['Indie Pop'], main: ['Pop', 'Rock'] },
+          { title: 'f', genres: ['New wave pop'], main: ['Pop'] },
         ]);
+        const custom = await oldPool.query('SELECT name FROM genres WHERE NOT from_list');
+        assert.deepEqual(custom.rows, [{ name: 'New wave pop' }]);
         // Die selbst angelegte Kategorie gleichen Namens bleibt unverändert und einzeln.
         const summer = await oldPool.query(`SELECT name, color FROM categories WHERE lower(name) = 'sommer'`);
         assert.deepEqual(summer.rows, [{ name: 'sommer', color: '#123456' }]);
@@ -231,6 +290,7 @@ describe('API', { skip: unavailable ?? false }, () => {
 
       assert.equal(created.title, 'Hurt');
       assert.deepEqual(created.genres, ['Country', 'Folk']);
+      assert.deepEqual(created.mainGenres, ['Country', 'Folk']);
       assert.deepEqual(created.categoryIds, [CALM, SUMMER]);
       assert.equal(created.durationSeconds, 217);
       assert.equal(created.rating, 5);
@@ -581,11 +641,16 @@ describe('API', { skip: unavailable ?? false }, () => {
         { artist: 'Toto', songCount: 1, totalDurationSeconds: 450 },
         { artist: 'Unbekannt', songCount: 1, totalDurationSeconds: 0 },
       ]);
-      assert.deepEqual(body.byGenre, [
+      // „Dance“ heißt in der Genre-Liste EDM und gehört zu Electronic.
+      assert.deepEqual(body.byMainGenre, [
         { genre: 'Pop', songCount: 2 },
-        { genre: 'Dance', songCount: 1 },
+        { genre: 'Electronic', songCount: 1 },
         { genre: 'Rock', songCount: 1 },
         { genre: null, songCount: 1 },
+      ]);
+      assert.deepEqual(body.bySubgenre, [
+        { genre: null, songCount: 3 },
+        { genre: 'EDM', songCount: 1 },
       ]);
       assert.deepEqual(body.byDecade, [
         { decade: 1970, songCount: 1 },
@@ -607,6 +672,93 @@ describe('API', { skip: unavailable ?? false }, () => {
         { minute: 7, songCount: 1 },
       ]);
       assert.deepEqual(body.categoryPairs, [{ firstId: CALM, secondId: SUMMER, songCount: 2 }]);
+    });
+  });
+
+  describe('Genres', () => {
+    test('die Genre-Liste nennt Hauptgenres und ihre Untergenres', async () => {
+      const { status, body } = await api('GET', '/api/genres');
+      assert.equal(status, 200);
+      const byName = new Map<string, Json>(body.map((genre: Json) => [genre.name, genre]));
+      const mainNames = body.filter((genre: Json) => genre.isMain).map((genre: Json) => genre.name);
+      assert.deepEqual(mainNames.slice(0, 4), ['Pop', 'Rock', 'Hip-Hop', 'Electronic']);
+      assert.equal(mainNames.length, 17);
+      assert.equal(body.findIndex((genre: Json) => !genre.isMain), 17, 'Hauptgenres stehen vorn');
+      assert.deepEqual(byName.get('Alternative Rock'), {
+        name: 'Alternative Rock',
+        isMain: false,
+        mainGenres: ['Rock'],
+        custom: false,
+        aliases: ['alternative', 'alternative & punk', 'alternative/indie'],
+      });
+      assert.deepEqual(byName.get('Pop Rock').mainGenres, ['Pop', 'Rock']);
+      // Schreibweisen, die sich nur in Leer- und Satzzeichen unterscheiden (hip hop), braucht es nicht.
+      assert.ok(byName.get('Hip-Hop').aliases.includes('rap'));
+      assert.ok(body.length > 1000);
+    });
+
+    test('Genres werden beim Speichern vereinheitlicht, unbekannte als eigene Genres angelegt', async () => {
+      const song = await createSong({
+        title: 'Mix',
+        artist: 'X',
+        genres: ['hip hop', 'ALTERNATIVE ROCK', 'Indie-Schrammel-Pop', 'Hip-Hop/Rap'],
+      });
+      assert.deepEqual(song.genres, ['Hip-Hop', 'Alternative Rock', 'Indie-Schrammel-Pop']);
+      assert.deepEqual(song.mainGenres, ['Pop', 'Rock', 'Hip-Hop']);
+
+      const listed = (await api('GET', '/api/genres')).body.find((genre: Json) => genre.name === 'Indie-Schrammel-Pop');
+      assert.deepEqual(listed, { name: 'Indie-Schrammel-Pop', isMain: false, mainGenres: ['Pop'], custom: true, aliases: [] });
+
+      // Eine andere Schreibweise desselben eigenen Genres führt zum vorhandenen Eintrag.
+      const second = await createSong({ title: 'Mix 2', artist: 'X', genres: ['indie schrammel pop'] });
+      assert.deepEqual(second.genres, ['Indie-Schrammel-Pop']);
+
+      // Nutzt kein Song das eigene Genre mehr, verschwindet es aus der Auswahl.
+      await api('DELETE', `/api/songs/${song.id}`);
+      await api('DELETE', `/api/songs/${second.id}`);
+      const after = (await api('GET', '/api/genres')).body.map((genre: Json) => genre.name);
+      assert.ok(!after.includes('Indie-Schrammel-Pop'));
+    });
+
+    test('ein Hauptgenre im Generator umfasst seine Untergenres', async () => {
+      const alternative = await createSong({ title: 'a', artist: 'A', genres: ['Alternative Rock'] });
+      const pop = await createSong({ title: 'b', artist: 'B', genres: ['Pop'] });
+      const punk = await createSong({ title: 'c', artist: 'C', genres: ['Punk Rock'] });
+
+      const rock = await api('POST', '/api/playlists/generate', { genres: ['Rock'], seed: 1 });
+      assert.equal(rock.status, 200);
+      assert.deepEqual(new Set(rock.body.songIds), new Set([alternative.id, punk.id]));
+      const onlyPunk = await api('POST', '/api/playlists/generate', { genres: ['Punk Rock'], seed: 1 });
+      assert.deepEqual(onlyPunk.body.songIds, [punk.id]);
+      const popOnly = await api('POST', '/api/playlists/generate', { genres: ['Pop'], seed: 1 });
+      assert.deepEqual(popOnly.body.songIds, [pop.id]);
+    });
+
+    test('findet die Genres eines Songs auf MusicBrainz', async () => {
+      const found = await api('GET', '/api/lookup/genres?title=Warriors&artist=Imagine+Dragons&duration=170');
+      assert.equal(found.status, 200);
+      assert.deepEqual(found.body.match, {
+        genres: ['Alternative Rock'],
+        suggestions: ['Pop'],
+        title: 'Warriors',
+        artist: 'Imagine Dragons',
+        url: 'https://musicbrainz.org/recording/warriors-1',
+      });
+
+      const unknown = await api('GET', '/api/lookup/genres?title=Hurt&artist=Johnny+Cash');
+      assert.deepEqual(unknown, { status: 200, body: { match: null } });
+      assert.deepEqual(genreSearches, [
+        'recording:"Warriors" AND artist:"Imagine Dragons"',
+        'recording:"Hurt" AND artist:"Johnny Cash"',
+      ]);
+      assert.equal((await api('GET', '/api/lookup/genres?artist=Johnny+Cash')).status, 400);
+    });
+
+    test('ein von Hand angelegter Song bekommt keine Genres untergeschoben', async () => {
+      const song = await createSong({ title: 'Warriors', artist: 'Imagine Dragons' });
+      await genreLookup.idle();
+      assert.deepEqual((await api('GET', `/api/songs/${song.id}`)).body.genres, []);
+      assert.deepEqual(genreSearches, []);
     });
   });
 
@@ -942,6 +1094,13 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(afterwards.get('Hello'), null);
       // Gesucht wird nur für neue Songs (eine frühere Suche kann schon im Zwischenspeicher liegen).
       assert.ok(!bpmSearches.some((search) => search.includes('Hello')), JSON.stringify(bpmSearches));
+
+      // Genres ebenso: Rick Astley kennt der MusicBrainz-Nachbau, Ed Sheeran nicht.
+      await genreLookup.idle();
+      const genres = new Map<string, Json>(((await api('GET', '/api/songs')).body as Json[]).map((song) => [song.title, song.genres]));
+      assert.deepEqual(genres.get('Never Gonna Give You Up'), ['Dance-Pop']);
+      assert.deepEqual(genres.get('Shape of You'), []);
+      assert.ok(!genreSearches.some((search) => search.includes('Hello')), JSON.stringify(genreSearches));
     });
 
     test('Importe ohne Playlist und ungültige Importe', async () => {
