@@ -74,6 +74,7 @@ export async function importFromYoutube(
       genres: [],
       bpm: null,
       energy: null,
+      singAlong: null,
       rating: null,
       notes: null,
       appleMusicUrl: null,

@@ -14,6 +14,7 @@ export interface GeneratorSong {
   /** Hauptgenres der Genres; ein gewünschtes Hauptgenre umfasst alle seine Untergenres. */
   mainGenres: string[];
   energy: number | null;
+  singAlong: number | null;
   rating: number | null;
   categoryIds: number[];
 }
@@ -94,6 +95,7 @@ export function buildFilter(criteria: GeneratorCriteria): (song: GeneratorSong) 
   const excludedSongs = new Set(criteria.excludeSongIds);
   const genres = new Set(criteria.genres.map((genre) => genre.trim().toLowerCase()));
   const [energyMin, energyMax] = orderedRange(criteria.energyMin, criteria.energyMax);
+  const [singAlongMin, singAlongMax] = orderedRange(criteria.singAlongMin, criteria.singAlongMax);
   const [yearFrom, yearTo] = orderedRange(criteria.yearFrom, criteria.yearTo);
 
   return (song) => {
@@ -109,6 +111,7 @@ export function buildFilter(criteria: GeneratorCriteria): (song: GeneratorSong) 
     }
     if (criteria.minRating !== null && (song.rating === null || song.rating < criteria.minRating)) return false;
     if (!withinRange(song.energy, energyMin, energyMax)) return false;
+    if (!withinRange(song.singAlong, singAlongMin, singAlongMax)) return false;
     if (!withinRange(song.releaseYear, yearFrom, yearTo)) return false;
     return true;
   };

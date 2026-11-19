@@ -10,7 +10,7 @@ import {
   type Column,
   type TableView,
 } from '../components/charts.tsx';
-import { CategoryChip, EmptyState, ENERGY_LABELS, ErrorNote, LoadingNote, PageHeader } from '../components/ui.tsx';
+import { CategoryChip, EmptyState, ENERGY_LABELS, ErrorNote, LoadingNote, PageHeader, SING_ALONG_LABELS } from '../components/ui.tsx';
 import { DASH, formatDecimal, formatDuration, formatSongCount, formatTotalDuration } from '../lib/format.ts';
 import { useStats } from '../queries.ts';
 import type { Stats } from '../types.ts';
@@ -55,7 +55,7 @@ function categoryChart(stats: Stats): { rows: BarRow[]; table: TableView } {
   return {
     rows,
     table: {
-      columns: ['Kategorie', 'Songs', 'Gesamtdauer', 'Ø Bewertung', 'Ø Energie', 'Ø BPM'],
+      columns: ['Kategorie', 'Songs', 'Gesamtdauer', 'Ø Bewertung', 'Ø Energie', 'Ø Mitsingen', 'Ø BPM'],
       rows: [
         ...stats.byCategory.map((category) => [
           category.name,
@@ -63,10 +63,11 @@ function categoryChart(stats: Stats): { rows: BarRow[]; table: TableView } {
           formatTotalDuration(category.totalDurationSeconds),
           decimalOrDash(category.averageRating),
           decimalOrDash(category.averageEnergy),
+          decimalOrDash(category.averageSingAlong),
           category.averageBpm === null ? DASH : number(category.averageBpm),
         ]),
         ...(stats.totals.withoutCategory > 0
-          ? [['Ohne Kategorie', number(stats.totals.withoutCategory), DASH, DASH, DASH, DASH]]
+          ? [['Ohne Kategorie', number(stats.totals.withoutCategory), DASH, DASH, DASH, DASH, DASH]]
           : []),
       ],
     },
@@ -284,6 +285,11 @@ export function StatsPage() {
     total,
     (step) => `Energie ${step} – ${ENERGY_LABELS[step - 1]}`,
   );
+  const singAlongs = scaleColumns(
+    data.bySingAlong.map((entry) => ({ step: entry.singAlong, songCount: entry.songCount })),
+    total,
+    (step) => `Mitsingen ${step} – ${SING_ALONG_LABELS[step - 1]}`,
+  );
   const categoriesById = new Map(data.byCategory.map((category) => [category.id, category]));
   const pairs = data.categoryPairs
     .map((pair) => ({ ...pair, first: categoriesById.get(pair.firstId), second: categoriesById.get(pair.secondId) }))
@@ -380,6 +386,14 @@ export function StatsPage() {
           <ColumnChart columns={energies} />
         </ChartCard>
 
+        <ChartCard
+          title="Mitsingen"
+          subtitle="Anzahl Songs je Stufe von 1 (lieber zuhören) bis 5 (lauthals mitsingen)."
+          table={tableFromColumns('Mitsingen', singAlongs, total)}
+        >
+          <ColumnChart columns={singAlongs} />
+        </ChartCard>
+
         <ChartCard title="Häufige Kombinationen" subtitle="Kategorien, die oft gemeinsam an einem Song hängen.">
           {pairs.length === 0 ? (
             <p className="chart-empty">Noch kein Song mit zwei Kategorien.</p>
@@ -418,6 +432,7 @@ export function StatsPage() {
               },
               { key: 'rating', label: 'Mit Bewertung', value: rated, total },
               { key: 'energy', label: 'Mit Energie-Angabe', value: total - totals.withoutEnergy, total },
+              { key: 'singAlong', label: 'Mit Mitsingen-Angabe', value: total - totals.withoutSingAlong, total },
               { key: 'duration', label: 'Mit Dauer', value: total - totals.withoutDuration, total },
               { key: 'links', label: 'Mit Streaming-Link', value: total - totals.withoutLinks, total },
             ]}

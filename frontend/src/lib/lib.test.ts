@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import type { Category, GenreInfo, Song } from '../types.ts';
+import type { Category, GeneratorCriteria, GenreInfo, Song } from '../types.ts';
+import { describeCriteria, EMPTY_CRITERIA } from './criteria.ts';
 import { toCsv, toFilename } from './csv.ts';
 import { formatCount, formatDuration, formatTotalDuration, parseDuration } from './format.ts';
 import {
@@ -18,6 +19,7 @@ import {
   mergeGenres,
   normalizeText,
   removeGenre,
+  SONG_CSV_HEADER,
   songCsvRow,
   sortSongs,
   totalDuration,
@@ -38,6 +40,7 @@ function song(overrides: Partial<Song> = {}): Song {
     mainGenres: [],
     bpm: null,
     energy: null,
+    singAlong: null,
     rating: null,
     notes: null,
     appleMusicUrl: null,
@@ -320,13 +323,42 @@ describe('Songliste', () => {
       [2, { id: 2, name: 'Abend', color: '#eb6834', description: null, songCount: 2 }],
     ]);
     const row = songCsvRow(
-      { ...hurt, durationSeconds: 217, rating: 5, genres: ['Country Rock', 'Folk'], mainGenres: ['Rock', 'Country', 'Folk'], categoryIds: [1, 2, 99] },
+      {
+        ...hurt,
+        durationSeconds: 217,
+        energy: 2,
+        singAlong: 4,
+        rating: 5,
+        genres: ['Country Rock', 'Folk'],
+        mainGenres: ['Rock', 'Country', 'Folk'],
+        categoryIds: [1, 2, 99],
+      },
       categories,
     );
     expect(row.slice(0, 5)).toEqual(['Hurt', 'Johnny Cash', 'American IV', '3:37', 217]);
     expect(row[6]).toBe('Country Rock, Folk');
     expect(row[7]).toBe('Rock, Country, Folk');
-    expect(row[11]).toBe('Abend, ruhig');
+    expect(SONG_CSV_HEADER.slice(9, 13)).toEqual(['Energie', 'Mitsingen', 'Bewertung', 'Kategorien']);
+    expect(row.slice(9, 13)).toEqual([2, 4, 5, 'Abend, ruhig']);
+    expect(row).toHaveLength(SONG_CSV_HEADER.length);
+  });
+});
+
+describe('Generator-Kriterien', () => {
+  const categories = new Map<number, Category>();
+
+  test('describeCriteria nennt Energie- und Mitsingen-Bereich', () => {
+    expect(
+      describeCriteria({ ...EMPTY_CRITERIA, targetMinutes: null, energyMin: 2, energyMax: 4, singAlongMin: 4 }, categories),
+    ).toEqual(['Energie 2–4', 'Mitsingen ab 4']);
+    expect(describeCriteria({ ...EMPTY_CRITERIA, targetMinutes: null, singAlongMin: 3, singAlongMax: 3 }, categories)).toEqual([
+      'Mitsingen 3',
+    ]);
+  });
+
+  test('describeCriteria kommt mit Kriterien von vor dem Mitsingen-Filter zurecht', () => {
+    const { singAlongMin: _min, singAlongMax: _max, ...old } = { ...EMPTY_CRITERIA, targetMinutes: null, energyMax: 2 };
+    expect(describeCriteria(old as GeneratorCriteria, categories)).toEqual(['Energie bis 2']);
   });
 });
 

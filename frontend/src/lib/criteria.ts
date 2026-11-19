@@ -19,6 +19,8 @@ export const EMPTY_CRITERIA: GeneratorCriteria = {
   minRating: null,
   energyMin: null,
   energyMax: null,
+  singAlongMin: null,
+  singAlongMax: null,
   yearFrom: null,
   yearTo: null,
   targetMinutes: 60,
@@ -63,6 +65,9 @@ export function describeCriteria(criteria: GeneratorCriteria, categories: Map<nu
 
   const energy = range(criteria.energyMin, criteria.energyMax, 'Energie ');
   if (energy) parts.push(energy);
+  // Playlists von vor dem Mitsingen-Filter haben die Angabe gar nicht.
+  const singAlong = range(criteria.singAlongMin ?? null, criteria.singAlongMax ?? null, 'Mitsingen ');
+  if (singAlong) parts.push(singAlong);
   const years = range(criteria.yearFrom, criteria.yearTo);
   if (years) parts.push(/^\d/.test(years) ? `Jahr ${years}` : years);
 

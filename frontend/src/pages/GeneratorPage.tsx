@@ -14,6 +14,7 @@ import {
   PageHeader,
   RATING_LABELS,
   ScaleInput,
+  SING_ALONG_LABELS,
 } from '../components/ui.tsx';
 import { EMPTY_CRITERIA, ORDER_OPTIONS, randomSeed, suggestPlaylistName } from '../lib/criteria.ts';
 import { formatDuration, formatSongCount, formatTotalDuration } from '../lib/format.ts';
@@ -23,6 +24,12 @@ import { useById, useCategories, useCreatePlaylist, useGenreIndex, usePlaylists,
 import type { Category, GeneratorCriteria, PlaylistOrder, Song } from '../types.ts';
 
 const DURATION_PRESETS = [30, 45, 60, 90, 120];
+
+/** Filter für die Skalen von 1 bis 5, jeweils mit Mindest- und Höchstwert. */
+const SCALE_FILTERS = [
+  { legend: 'Energie', labels: ENERGY_LABELS, minKey: 'energyMin', maxKey: 'energyMax', missing: 'energy' },
+  { legend: 'Mitsingen', labels: SING_ALONG_LABELS, minKey: 'singAlongMin', maxKey: 'singAlongMax', missing: 'singAlong' },
+] as const;
 
 /** Gibt einen Wert erst weiter, wenn er sich kurz nicht geändert hat (z. B. während des Tippens). */
 function useDebounced<T>(value: T, delayMs: number): T {
@@ -201,6 +208,10 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
     rating: criteria.minRating === null ? 0 : songs.filter((song) => song.rating === null).length,
     energy:
       criteria.energyMin === null && criteria.energyMax === null ? 0 : songs.filter((song) => song.energy === null).length,
+    singAlong:
+      criteria.singAlongMin === null && criteria.singAlongMax === null
+        ? 0
+        : songs.filter((song) => song.singAlong === null).length,
     year:
       criteria.yearFrom === null && criteria.yearTo === null ? 0 : songs.filter((song) => song.releaseYear === null).length,
   };
@@ -355,29 +366,31 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
             </div>
           </fieldset>
 
-          <fieldset className="form-section">
-            <legend>Energie</legend>
-            <div className="form-row">
-              {(['energyMin', 'energyMax'] as const).map((key) => (
-                <label key={key} className="field">
-                  <span className="field-label">{key === 'energyMin' ? 'Mindestens' : 'Höchstens'}</span>
-                  <select
-                    className="input"
-                    value={criteria[key] ?? ''}
-                    onChange={(event) => update({ [key]: event.target.value === '' ? null : Number(event.target.value) })}
-                  >
-                    <option value="">egal</option>
-                    {ENERGY_LABELS.map((label, index) => (
-                      <option key={label} value={index + 1}>
-                        {index + 1} – {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-            {missingNote(missing.energy, 'Energie-Angabe')}
-          </fieldset>
+          {SCALE_FILTERS.map((filter) => (
+            <fieldset key={filter.legend} className="form-section">
+              <legend>{filter.legend}</legend>
+              <div className="form-row">
+                {([filter.minKey, filter.maxKey] as const).map((key) => (
+                  <label key={key} className="field">
+                    <span className="field-label">{key === filter.minKey ? 'Mindestens' : 'Höchstens'}</span>
+                    <select
+                      className="input"
+                      value={criteria[key] ?? ''}
+                      onChange={(event) => update({ [key]: event.target.value === '' ? null : Number(event.target.value) })}
+                    >
+                      <option value="">egal</option>
+                      {filter.labels.map((label, index) => (
+                        <option key={label} value={index + 1}>
+                          {index + 1} – {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              {missingNote(missing[filter.missing], `${filter.legend}-Angabe`)}
+            </fieldset>
+          ))}
 
           <fieldset className="form-section">
             <legend>Mindestbewertung</legend>

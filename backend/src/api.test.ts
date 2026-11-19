@@ -280,6 +280,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         genres: ['Country', ' Folk ', 'country'],
         bpm: 90,
         energy: 2,
+        singAlong: 4,
         rating: 5,
         notes: 'Gänsehaut',
         appleMusicUrl: 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605',
@@ -295,6 +296,8 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.deepEqual(created.categoryIds, [CALM, SUMMER]);
       assert.equal(created.durationSeconds, 217);
       assert.equal(created.rating, 5);
+      assert.equal(created.energy, 2);
+      assert.equal(created.singAlong, 4);
       assert.ok(!Number.isNaN(Date.parse(created.createdAt)));
 
       const fetched = await api('GET', `/api/songs/${created.id}`);
@@ -346,7 +349,7 @@ describe('API', { skip: unavailable ?? false }, () => {
     });
 
     test('ändert einen Song samt Kategorien', async () => {
-      const created = await createSong({ title: 'Alt', artist: 'x', rating: 2, categoryIds: [CALM, LOUD] });
+      const created = await createSong({ title: 'Alt', artist: 'x', rating: 2, singAlong: 3, categoryIds: [CALM, LOUD] });
       const updated = await api('PUT', `/api/songs/${created.id}`, {
         title: 'Neu',
         artist: 'x',
@@ -356,6 +359,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(updated.status, 200);
       assert.equal(updated.body.title, 'Neu');
       assert.equal(updated.body.rating, null, 'nicht mitgeschickte Felder werden geleert');
+      assert.equal(updated.body.singAlong, null);
       assert.equal(updated.body.energy, 4);
       assert.deepEqual(updated.body.categoryIds, [SUMMER]);
       assert.equal(updated.body.createdAt, created.createdAt);
@@ -570,9 +574,11 @@ describe('API', { skip: unavailable ?? false }, () => {
         withoutDuration: 0,
         withoutRating: 0,
         withoutEnergy: 0,
+        withoutSingAlong: 0,
         withoutLinks: 0,
       });
       assert.deepEqual(body.topArtists, []);
+      assert.deepEqual(body.bySingAlong, []);
       assert.deepEqual(body.byDecade, []);
       assert.equal(body.byCategory.length, 3);
     });
@@ -586,6 +592,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         genres: ['Pop'],
         rating: 5,
         energy: 4,
+        singAlong: 5,
         bpm: 120,
         categoryIds: [CALM, SUMMER],
         youtubeUrl: 'https://youtu.be/8AHCfZTRGiI',
@@ -598,10 +605,19 @@ describe('API', { skip: unavailable ?? false }, () => {
         genres: ['pop', 'Dance'],
         rating: 4,
         energy: 2,
+        singAlong: 2,
         bpm: 100,
         categoryIds: [CALM, SUMMER],
       });
-      await createSong({ title: 'c', artist: 'Toto', durationSeconds: 450, releaseYear: 1982, genres: ['Rock'], categoryIds: [CALM] });
+      await createSong({
+        title: 'c',
+        artist: 'Toto',
+        durationSeconds: 450,
+        releaseYear: 1982,
+        genres: ['Rock'],
+        singAlong: 5,
+        categoryIds: [CALM],
+      });
       await createSong({ title: 'd', artist: 'Unbekannt' });
       await api('POST', '/api/playlists', { name: 'Mix' });
 
@@ -619,6 +635,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         withoutDuration: 1,
         withoutRating: 2,
         withoutEnergy: 2,
+        withoutSingAlong: 1,
         withoutLinks: 3,
       });
 
@@ -633,9 +650,13 @@ describe('API', { skip: unavailable ?? false }, () => {
       const summer = body.byCategory.find((row: Json) => row.name === 'Sommer');
       assert.equal(summer.averageRating, 4.5);
       assert.equal(summer.averageEnergy, 3);
+      assert.equal(summer.averageSingAlong, 3.5);
       assert.equal(summer.averageBpm, 110);
       const loud = body.byCategory.find((row: Json) => row.name === 'laut');
       assert.equal(loud.averageRating, null);
+      assert.equal(loud.averageSingAlong, null);
+      const calm = body.byCategory.find((row: Json) => row.name === 'ruhig');
+      assert.equal(calm.averageSingAlong, 4);
 
       assert.deepEqual(body.topArtists, [
         { artist: 'ABBA', songCount: 2, totalDurationSeconds: 300 },
@@ -666,6 +687,11 @@ describe('API', { skip: unavailable ?? false }, () => {
         { energy: 2, songCount: 1 },
         { energy: 4, songCount: 1 },
         { energy: null, songCount: 2 },
+      ]);
+      assert.deepEqual(body.bySingAlong, [
+        { singAlong: 2, songCount: 1 },
+        { singAlong: 5, songCount: 2 },
+        { singAlong: null, songCount: 1 },
       ]);
       assert.deepEqual(body.byDurationMinute, [
         { minute: 1, songCount: 1 },

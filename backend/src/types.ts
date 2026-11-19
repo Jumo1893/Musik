@@ -14,6 +14,8 @@ export interface Song {
   bpm: number | null;
   /** 1 (ruhig) bis 5 (sehr energiegeladen) */
   energy: number | null;
+  /** 1 (lieber zuhören) bis 5 (lauthals mitsingen) */
+  singAlong: number | null;
   /** 1 bis 5 Sterne */
   rating: number | null;
   notes: string | null;
@@ -115,6 +117,7 @@ export interface Stats {
     withoutDuration: number;
     withoutRating: number;
     withoutEnergy: number;
+    withoutSingAlong: number;
     withoutLinks: number;
   };
   byCategory: Array<{
@@ -125,6 +128,7 @@ export interface Stats {
     totalDurationSeconds: number;
     averageRating: number | null;
     averageEnergy: number | null;
+    averageSingAlong: number | null;
     averageBpm: number | null;
   }>;
   topArtists: Array<{ artist: string; songCount: number; totalDurationSeconds: number }>;
@@ -135,6 +139,7 @@ export interface Stats {
   byDecade: Array<{ decade: number; songCount: number }>;
   byRating: Array<{ rating: number | null; songCount: number }>;
   byEnergy: Array<{ energy: number | null; songCount: number }>;
+  bySingAlong: Array<{ singAlong: number | null; songCount: number }>;
   /** Dauer in ganzen Minuten abgerundet; 7 steht für „7 Minuten und länger“. */
   byDurationMinute: Array<{ minute: number; songCount: number }>;
   categoryPairs: Array<{ firstId: number; secondId: number; songCount: number }>;

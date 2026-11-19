@@ -12,7 +12,7 @@ import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.t
 import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
 import { OnlineSearch } from './OnlineSearch.tsx';
-import { Artwork, ChipToggle, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput } from './ui.tsx';
+import { Artwork, ChipToggle, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput, SING_ALONG_LABELS } from './ui.tsx';
 import { useOnlineLookup } from './useOnlineLookup.ts';
 
 /** Zustand des Formulars: Texte so, wie sie in den Feldern stehen. */
@@ -25,6 +25,7 @@ interface FormState {
   genres: string[];
   bpm: string;
   energy: number | null;
+  singAlong: number | null;
   rating: number | null;
   notes: string;
   appleMusicUrl: string;
@@ -50,6 +51,7 @@ const EMPTY_FORM: FormState = {
   genres: [],
   bpm: '',
   energy: null,
+  singAlong: null,
   rating: null,
   notes: '',
   appleMusicUrl: '',
@@ -70,6 +72,7 @@ function formFromSong(song: Song): FormState {
     genres: song.genres,
     bpm: song.bpm === null ? '' : String(song.bpm),
     energy: song.energy,
+    singAlong: song.singAlong,
     rating: song.rating,
     notes: song.notes ?? '',
     appleMusicUrl: song.appleMusicUrl ?? '',
@@ -160,6 +163,7 @@ function validate(form: FormState): { input: SongInput | null; errors: Errors } 
       genres: form.genres,
       bpm,
       energy: form.energy,
+      singAlong: form.singAlong,
       rating: form.rating,
       notes: textOrNull(form.notes),
       appleMusicUrl: textOrNull(form.appleMusicUrl),
@@ -681,6 +685,16 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 labels={ENERGY_LABELS}
                 value={form.energy}
                 onChange={(value) => set('energy', value)}
+              />
+            </div>
+            <div className="field span-3">
+              <span className="field-label">Mitsingen</span>
+              <ScaleInput
+                variant="levels"
+                groupLabel="Mitsingen"
+                labels={SING_ALONG_LABELS}
+                value={form.singAlong}
+                onChange={(value) => set('singAlong', value)}
               />
             </div>
           </div>

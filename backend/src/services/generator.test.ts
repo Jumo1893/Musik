@@ -23,6 +23,7 @@ function song(overrides: Partial<GeneratorSong> = {}): GeneratorSong {
     genres: ['Pop'],
     mainGenres: ['Pop'],
     energy: 3,
+    singAlong: 3,
     rating: 3,
     categoryIds: [],
     ...overrides,
@@ -133,6 +134,19 @@ describe('Filter', () => {
     assert.deepEqual(ids(pick(all, { energyMin: 3 })), ids([medium, wild]));
     assert.deepEqual(ids(pick(all, { energyMax: 3 })), ids([calm, medium]));
     assert.deepEqual(ids(pick(all, { yearFrom: 1990, yearTo: 1999 })), [medium.id]);
+  });
+
+  test('Mitsingen-Bereich schließt Songs ohne Angabe aus', () => {
+    const listen = song({ singAlong: 1 });
+    const hum = song({ singAlong: 2 });
+    const chorus = song({ singAlong: 3 });
+    const loud = song({ singAlong: 5 });
+    const unknown = song({ singAlong: null });
+    const all = [listen, hum, chorus, loud, unknown];
+    assert.deepEqual(ids(pick(all, { singAlongMin: 3 })), ids([chorus, loud]));
+    assert.deepEqual(ids(pick(all, { singAlongMax: 2 })), ids([listen, hum]));
+    assert.deepEqual(ids(pick(all, { singAlongMin: 5, singAlongMax: 2 })), ids([hum, chorus, loud]), 'vertauschte Grenzen');
+    assert.deepEqual(ids(pick(all, { singAlongMin: 4, energyMax: 2 })), [], 'beide Skalen gelten zugleich');
   });
 
   test('vertauschte Bereichsgrenzen werden verziehen', () => {

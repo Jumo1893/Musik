@@ -184,6 +184,7 @@ export function ScaleInput({ value, onChange, labels, variant, groupLabel }: Sca
 
 export const RATING_LABELS = ['geht so', 'ganz gut', 'gut', 'sehr gut', 'Lieblingssong'] as const;
 export const ENERGY_LABELS = ['sehr ruhig', 'ruhig', 'mittel', 'energiegeladen', 'sehr energiegeladen'] as const;
+export const SING_ALONG_LABELS = ['lieber zuhören', 'mitsummen', 'Refrain mitsingen', 'gern mitsingen', 'lauthals mitsingen'] as const;
 
 /** Fortschrittsbalken für längere Vorgänge. */
 export function ProgressBar({ value, max, label }: { value: number; max: number; label: string }) {
