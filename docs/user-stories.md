@@ -1,6 +1,6 @@
 # Ideen als User Stories
 
-Stand 20.11.2026 · Grundlage: Branch `feature/song-hinzufuegen` (Datenbank bis Migration 008 „Mitsingen“)
+Stand 20.11.2026 · Grundlage: Branch `feature/song-hinzufuegen` (Datenbank bis Migration 008 „Mitsingen“) · Die offenen Prüfpunkte zu A5, A9 und A10 sind geklärt, siehe [Prüfungen vom 20.11.2026](#prüfungen-vom-20112026).
 
 Die Stories sind nach Bereichen gruppiert, der Schwerpunkt liegt auf **Song hinzufügen**. Jede Story hat eine Priorität (hoch / mittel / niedrig) und eine grobe Größe:
 
@@ -29,6 +29,7 @@ Die Stories sind nach Bereichen gruppiert, der Schwerpunkt liegt auf **Song hinz
 | A14 | YouTube-Importe aus dem iTunes-Katalog vervollständigen | mittel | M |
 | A15 | Tonart und „Explicit“ mitnehmen | niedrig | S |
 | A16 | Sprache und „Instrumental“ | niedrig | S–M |
+| A17 | Apple-Music-Playlist per Link übernehmen | mittel | M |
 | | **Bibliothek pflegen** | | |
 | B1 | Schnell nachpflegen, Song für Song | hoch | M |
 | B2 | Kategorie „Mitsingen“ in die neue Skala überführen | hoch | S |
@@ -57,7 +58,7 @@ Die Stories sind nach Bereichen gruppiert, der Schwerpunkt liegt auf **Song hinz
 1. **Schnelle Gewinne:** A1, A2, B2, C1. Klein, sofort spürbar, keine neuen Online-Dienste.
 2. **Song hinzufügen spürbar schneller:** A3, A4, A5. Zusammen ergeben sie den neuen Ablauf „Link einfügen oder suchen → Treffer prüfen → nur noch Kategorien und Skalen wählen → speichern“.
 3. **Bibliothek vollständig machen:** B1 (vor allem für die Mitsingen-Angabe, die allen bisherigen Songs fehlt) und D1 als Sicherheitsnetz für die gepflegten Daten.
-4. Danach nach Lust und Laune: A6, A10, B3/B4, C2 bis C5.
+4. Danach nach Lust und Laune: A6, A10 mit A17, B3/B4, C2 bis C5.
 
 ## Für alle Stories
 
@@ -163,24 +164,39 @@ Priorität hoch · Größe M
 
 Priorität hoch · Größe M
 
-> Als Nutzer möchte ich, dass beim Anlegen eines Songs die Links zu YouTube und YouTube Music automatisch gefunden werden, damit ich nicht für jeden Song einzeln suchen und Links kopieren muss, und zwar ohne YouTube-Konto und ohne Tageskontingent.
+> Als Nutzer möchte ich, dass beim Anlegen eines Songs der YouTube-Link automatisch gefunden wird (er gilt auch für YouTube Music), damit ich nicht für jeden Song einzeln suchen und Links kopieren muss, auch ohne YouTube-Konto und ohne Tageskontingent.
 
 **Heute:** Ein Treffer der Online-Suche bringt nur den Apple-Music-Link mit. Für YouTube sucht man selbst oder verbraucht mit verbundenem Konto eine der 100 Suchen pro Tag.
 
+**Geprüft am 20.11.2026:** Der ursprünglich geplante Dienst song.link (Odesli) fällt aus. Seine offene Schnittstelle ist seit dem 31.07.2026 abgeschaltet; eine Anfrage ohne Schlüssel endet mit `401 PUBLIC_API_ACCESS_DEPRECATED`. Neue Schlüssel vergibt der Anbieter nicht mehr, nur „bei berechtigtem, dauerhaftem Bedarf“ eine Freischaltung auf Antrag. Stattdessen kommen diese Quellen in Frage, getestet mit sechs bekannten Songs (Hurt, Mr. Brightside, Atemlos durch die Nacht, Blinding Lights, Was du Liebe nennst, Wonderwall):
+
+| Quelle | Art | Ergebnis im Test | Grenzen |
+|---|---|---|---|
+| Wikidata, Eigenschaft P1651 „YouTube-Video-ID“ | offiziell, ohne Schlüssel | 4 von 6 mit gültigem offiziellem Musikvideo; 1 ID zeigte auf ein gelöschtes Video | nur Songs mit eigenem Wikidata-Eintrag, also vor allem Hits |
+| MusicBrainz, Links „free streaming“ an der Aufnahme | offiziell, ohne Schlüssel, 1 Anfrage pro Sekunde | 2 von 6 (Musikvideo, offizielles Audio, auch music.youtube.com) | lückenhaft, aber eine gute Ergänzung: Wikidata und MusicBrainz zusammen fanden für alle 6 einen gültigen Link |
+| Suche von YouTube Music (interne Schnittstelle `youtubei/v1/search`) | inoffiziell, ohne Schlüssel und Konto | Treffer 1 war genau der gesuchte Song: „Hurt · Johnny Cash · American IV · 3:37“ (offizieller Audio-Track) | keine öffentliche Schnittstelle, kann sich jederzeit ändern; automatisierter Zugriff ist in den YouTube-Nutzungsbedingungen nicht vorgesehen |
+| YouTube-Suche der App (Data API) | offiziell, nur mit verbundenem Konto | wie heute | 100 Suchen pro Tag |
+
 **Akzeptanzkriterien**
 
-1. Sobald ein Link bekannt ist (Apple Music aus dem Treffer oder ein eingefügter YouTube-Link), fragt die App einen Link-Dienst nach den passenden Links der anderen Plattformen und füllt **leere** Felder: YouTube, YouTube Music und, wenn der Song über YouTube kam, Apple Music.
-2. Unter dem Feld steht, woher der Link stammt („gefunden über song.link“), mit Verweis auf die Seite. Ein selbst eingetragener Link wird nie ersetzt.
-3. Kennt der Dienst den Song nicht, bleibt das Feld leer, und der „Suchen“-Knopf ist da wie heute.
-4. Für vorhandene Songs gibt es die Aktion **„Fehlende Links ergänzen“** (auf der Seite „YouTube“ neben „Links suchen“ oder in der Auswertung). Sie läuft im Hintergrund, nur für Songs mit mindestens einem Link, zeigt den Fortschritt und am Ende ein Ergebnis wie „34 Links ergänzt, 6 Songs unbekannt“.
-5. Ist der Dienst nicht erreichbar, funktioniert alles wie bisher.
+1. Sobald Titel und Interpret feststehen (Treffer übernommen oder eingetippt) und das YouTube-Feld leer ist, sucht die App einen YouTube-Link in dieser Reihenfolge: Wikidata, MusicBrainz, YouTube-Music-Suche. Die erste Quelle mit einem passenden, gültigen Treffer gewinnt.
+2. Bei Wikidata und MusicBrainz muss der Eintrag zu Titel und Interpret passen (Regeln aus `songMatching.ts`). Bei der YouTube-Music-Suche muss zusätzlich die Dauer passen (höchstens 5 Sekunden Abweichung, wenn die Dauer bekannt ist), und Remixe oder Live-Fassungen zählen nur, wenn genau so eine gesucht ist.
+3. Jede gefundene Video-ID wird vor dem Übernehmen kurz geprüft (oEmbed); gelöschte oder private Videos werden übersprungen.
+4. Gefüllt wird nur ein leeres YouTube-Feld. Unter dem Feld steht die Quelle („gefunden über Wikidata“, „… über YouTube Music“) mit Link zum Video. Ein selbst eingetragener Link wird nie ersetzt.
+5. Findet keine Quelle etwas, bleibt das Feld leer, und der „Suchen“-Knopf funktioniert wie heute (mit Konto: Suche in der App).
+6. Für vorhandene Songs ohne YouTube-Link gibt es auf der Seite „YouTube“ die Aktion **„Fehlende YouTube-Links ergänzen“**. Sie läuft im Hintergrund mit Fortschritt; die Funde landen in der vorhandenen Prüfliste von „Links suchen“ und werden erst nach Bestätigung gespeichert.
+7. Die inoffizielle YouTube-Music-Suche lässt sich abschalten (etwa `YOUTUBE_MUSIC_SEARCH=off` in der `.env`); dann gelten nur die offiziellen Quellen.
+8. Fällt eine Quelle aus, geht es mit der nächsten weiter; alles andere funktioniert wie bisher.
 
 **Hinweise zur Umsetzung**
 
-- Kandidat: die API von Odesli/song.link (`GET https://api.song.link/v1-alpha.1/links?url=<Link>&userCountry=DE`). Sie liefert `linksByPlatform`, darunter `appleMusic`, `youtube` und `youtubeMusic`. Ohne Schlüssel laut Doku etwa 10 Anfragen pro Minute. **Vor der Umsetzung prüfen**, ob Angebot, Grenze und Nutzungsbedingungen noch so gelten.
-- Wegen der Grenze im Hintergrund über die vorhandene `SongQueue` (Pause etwa 6 bis 7 Sekunden).
-- Für YouTube liefert der Dienst oft das „Topic“-Video (offizieller Audio-Track) statt des Musikvideos. Für YouTube Music ist das ideal, für die YouTube-Wiedergabeliste brauchbar.
-- README „Was nach außen geht“: gesendet wird nur der Plattform-Link.
+- **Wikidata:** eine SPARQL-Abfrage an `https://query.wikidata.org/sparql`: Song mit `rdfs:label` = Titel (deutsch oder englisch), Interpret über `wdt:P175`, dazu `wdt:P1651`. Braucht einen aussagekräftigen User-Agent. Liefert meist das offizielle Musikvideo.
+- **MusicBrainz:** Die Genre-Suche findet die Aufnahme ohnehin. Ihre Links holt eine zusätzliche Anfrage `recording/<MBID>?inc=url-rels` (Typ „free streaming“). Die vorhandene Warteschlange mit einer Anfrage pro Sekunde reicht.
+- **YouTube Music:** `POST https://music.youtube.com/youtubei/v1/search` mit dem Client `WEB_REMIX` und dem Filter „Songs“ (so wie die Bibliothek ytmusicapi). Die Antwort enthält Titel, Interpret, Album, Dauer und Video-ID. Wie bei songbpm.com tolerant auswerten und bei Fehlern still aufgeben; eine Anfrage pro Song, im Hintergrund mit Pausen.
+- **Prüfen der Video-ID:** `https://www.youtube.com/oembed?url=…&format=json` antwortet bei gelöschten Videos mit 404 (getestet).
+- Der Gegenweg (YouTube-Link → Apple-Music-Link) braucht keinen weiteren Dienst: iTunes-Suche mit Titel und Interpret aus oEmbed (siehe A4 und A14).
+- README „Was nach außen geht“ um Wikidata und YouTube Music ergänzen; gesendet werden Titel und Interpret.
+- Nicht empfohlen: die weiterhin erreichbaren Seiten von song.link auszulesen. Der Anbieter hat den maschinellen Zugang bewusst beendet.
 
 ### A6 · Vorschläge aus ähnlichen Songs der Bibliothek
 
@@ -257,8 +273,15 @@ Priorität mittel · Größe M
 
 **Hinweise zur Umsetzung**
 
-- iTunes liefert `previewUrl` in Suche und Lookup. Für gespeicherte Songs lässt sie sich über die Track-ID aus dem Apple-Music-Link (`?i=…`) nachschlagen (siehe A4).
-- Die Content-Security-Policy in `frontend/nginx/default.conf.template` erlaubt bisher weder fremde Audioquellen noch eingebettete Seiten (`default-src 'self'`). Nötig wären `media-src` für Apples Hörproben-Server und `frame-src https://www.youtube-nocookie.com`.
+- iTunes liefert `previewUrl` in Suche und Lookup, etwa `https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview…/….plus.aac.p.m4a`: 30 Sekunden, ohne Weiterleitung. Für gespeicherte Songs lässt sie sich über die Track-ID aus dem Apple-Music-Link (`?i=…`) nachschlagen (siehe A4).
+- **Sicherheitsregeln, geprüft am 20.11.2026** mit einer Testseite unter den Kopfzeilen der App: Heute blockiert die Content-Security-Policy beides („Loading media … violates default-src 'self'“, „Framing 'https://www.youtube-nocookie.com/' violates …“). Mit diesen zwei Ergänzungen in `frontend/nginx/default.conf.template` laufen Hörprobe und Player:
+
+  ```
+  media-src 'self' https://audio-ssl.itunes.apple.com; frame-src https://www.youtube-nocookie.com;
+  ```
+
+- **YouTube braucht den Referrer:** Die App schickt für alle Seiten `Referrer-Policy: no-referrer`. Damit zeigt der eingebettete Player nur „Video player configuration error – Error 153“. Abhilfe, ohne die Regel für die ganze App zu lockern: am iframe `referrerpolicy="strict-origin-when-cross-origin"` setzen. So getestet: Der Player lädt, das Video spielt (stumm per Autoplay geprüft). YouTube erfährt dabei nur die Herkunft der App, etwa `http://localhost:8090`.
+- Getestet im Chromium-Browser der Claude-App; Firefox und Safari sind nicht geprüft.
 - README „Was nach außen geht“ ergänzen: Abspielen lädt von Apple bzw. YouTube.
 
 ### A10 · Viele Songs auf einmal: Textliste oder CSV
@@ -282,7 +305,8 @@ Priorität mittel · Größe L
 
 - Wegen der iTunes-Grenze (etwa 20 Anfragen pro Minute) als Auftrag im Backend mit Fortschritt, nach dem Muster der YouTube-Übertragung (`/api/youtube/jobs/:id`). 200 Zeilen dauern damit rund 10 Minuten.
 - Die Prüfliste des YouTube-Imports (`YoutubeImportPage.tsx`) sollte ein gemeinsamer Baustein werden, damit A10 und A11 dieselbe Oberfläche nutzen.
-- Bonus: Die Musik-App auf dem Mac und iTunes unter Windows exportieren Playlists als Textdatei („Ablage → Mediathek → Playlist exportieren“). Damit ließen sich Apple-Music-Playlists ohne kostenpflichtige Entwickler-Mitgliedschaft übernehmen. Ob die neue Apple-Music-App für Windows das auch kann, ist zu prüfen.
+- **Apple-Music-Playlists, geprüft am 20.11.2026:** Die Apple-Music-App für Windows kann keine Playlists exportieren. Apples Anleitung für die Windows-App hat dazu kein Kapitel, Nutzer in der Apple Community bestätigen das, und iTunes verwaltet neben den neuen Apps nur noch Podcasts und Hörbücher. Den Export als Textdatei gibt es nur noch in der Musik-App auf dem Mac („Ablage → Mediathek → Playlist exportieren“). Unter Windows ist A17 der bessere Weg (Playlist über ihren Teilen-Link übernehmen).
+- Der CSV-Import sollte außerdem Dateien von Fremddiensten wie TuneMyMusic („Apple Music to File“) verstehen. Dafür braucht der Dienst allerdings Zugriff auf das Apple-Music-Konto; kostenlos laut einem Testbericht bis 500 Songs.
 
 ### A11 · Album oder Interpret durchgehen
 
@@ -393,6 +417,32 @@ Priorität niedrig · Größe S–M
 **Hinweise zur Umsetzung**
 
 - MusicBrainz kennt bei Veröffentlichungen die Sprache der Texte. Ob sie in den Suchergebnissen der Aufnahmen mitkommt, wäre zu prüfen; sonst bleibt es bei der Genre-Regel und der eigenen Auswahl.
+
+### A17 · Apple-Music-Playlist per Link übernehmen
+
+Priorität mittel · Größe M
+
+> Als Nutzer von Apple Music möchte ich eine meiner Playlists über ihren Teilen-Link in die App holen, damit ich bestehende Playlists nicht Song für Song nachbauen muss, auch unter Windows, wo die Apple-Music-App keine Playlists exportieren kann.
+
+**Geprüft am 20.11.2026:** Die öffentliche Seite einer geteilten Playlist enthält die Songliste samt Apple-Track-IDs. Bei Apples eigenen Playlists stehen sie als strukturierte Daten in der Seite (`application/ld+json`, Typ `MusicPlaylist`), bei eigenen Playlists (`pl.u-…`) in den eingebetteten Seitendaten (`serialized-server-data`, Songs mit `storeAdamID`). Eine einzige iTunes-Abfrage mit allen IDs liefert dann die vollständigen Angaben: 100 IDs ergaben 100 Songs in gut einer Sekunde. Grenze: Bei Apples Playlist „10 Jahre Apple Music: Top Songs“ (laut Apple 500 Songs) enthielt die Seite nur 300.
+
+**Akzeptanzkriterien**
+
+1. „Mehrere hinzufügen“ (A10) und das Suchfeld im Song-Dialog (A4) erkennen Links der Form `music.apple.com/<land>/playlist/<name>/pl.…`.
+2. Die App liest Name und Songs der Playlist und zeigt die Prüfliste aus A10: jeder Song mit Cover, Titel, Interpret, Album und Jahr. Songs, die schon in der Bibliothek sind, sind markiert und nicht angehakt.
+3. Die Option **„Auch als Playlist anlegen“** ist vorausgewählt. Sie legt in der App eine Playlist mit demselben Namen und derselben Reihenfolge an, mit den neuen und den schon vorhandenen Songs.
+4. Gemeinsame Kategorien für die neuen Songs sind wählbar. Tempo, Genres und YouTube-Links werden im Hintergrund ergänzt (A5).
+5. Enthält die Seite genau 300 Songs, weist die App darauf hin, dass längere Playlists abgeschnitten sein können.
+6. Bei einer nicht geteilten Playlist oder einem kaputten Link erklärt die App, was zu tun ist: „Diese Playlist ist nicht öffentlich. In Apple Music ‚Teilen → Link kopieren‘ wählen.“
+7. Ausbaustufe: Die App merkt sich den Link an der Playlist. „Mit Apple Music abgleichen“ holt später nur neue Songs dazu.
+
+**Hinweise zur Umsetzung**
+
+- Die Seite mit gewöhnlichem Browser-User-Agent abrufen. Die IDs am besten unabhängig vom Seitenaufbau einsammeln: alle Song-Links der Seite (`/song/<name>/<ID>` und `/album/<name>/<ID>?i=<ID>`) in ihrer Reihenfolge, doppelte weg. Das klappt für beide Seitenformen und übersteht kleinere Umbauten besser als das Auslesen bestimmter JSON-Felder.
+- Danach `https://itunes.apple.com/lookup?id=<ID1>,<ID2>,…&country=<ITUNES_COUNTRY>` in Paketen zu 100 IDs (getestet); `mapItunesTrack` passt.
+- Eine offizielle Schnittstelle ist das nicht (die verlangt die kostenpflichtige Entwickler-Mitgliedschaft). Wie bei songbpm.com kann eine Änderung der Seite das Einlesen stoppen; dann sagt die App das und verweist auf die Textliste (A10).
+- README „Was nach außen geht“: Der Playlist-Link geht an Apple.
+- Offizielle Alternative für die ganze Mediathek ist die Datenkopie unter privacy.apple.com. Sie enthält laut älteren Beschreibungen „Apple Music Library Tracks“ und „Apple Music Library Playlists“ als JSON, dauert aber bis zu sieben Tage, und ihr Aufbau ist nicht dokumentiert. Erst mit einem echten Export prüfen, bevor man dafür einen Import baut.
 
 ---
 
@@ -716,3 +766,23 @@ Priorität niedrig · Größe S
 - **Zeitverlauf in der Auswertung:** Songs pro Monat hinzugefügt; wie sich Genres und Energie über die Zeit verschieben.
 - **„Was höre ich jetzt?“:** Stimmung wählen und einen (oder fünf) passende Songs direkt abspielen.
 - **Einschätzung per KI** (optional, mit eigenem API-Schlüssel): Stimmung und Energie bekannter Songs vorschlagen lassen. Das widerspricht allerdings dem Grundsatz, möglichst wenig nach außen zu geben; A6 ist die lokale Alternative.
+
+---
+
+## Prüfungen vom 20.11.2026
+
+| Punkt | Ergebnis | Folge |
+|---|---|---|
+| song.link-Schnittstelle für A5 | Seit 31.07.2026 abgeschaltet: `401 PUBLIC_API_ACCESS_DEPRECATED`, keine neuen Schlüssel, Freischaltung nur auf Antrag bei „berechtigtem, dauerhaftem Bedarf“ | A5 nutzt jetzt Wikidata und MusicBrainz (offiziell, zusammen 6 von 6 Testsongs), dazu die inoffizielle Suche von YouTube Music als abschaltbaren Rückfall |
+| Playlist-Export der Apple-Music-App unter Windows (A10) | Gibt es nicht; iTunes verwaltet neben den neuen Apps nur noch Podcasts und Hörbücher; Export als Text nur noch in der Musik-App auf dem Mac | Neue Story A17: Playlist über ihren Teilen-Link übernehmen (getestet mit Apples und eigenen Playlists, bis 300 Songs); zusätzlich CSV aus Fremddiensten |
+| Sicherheitsregeln für Hörprobe und YouTube-Player (A9) | Heute blockiert; mit `media-src` und `frame-src` frei. Der Player braucht wegen `Referrer-Policy: no-referrer` zusätzlich `referrerpolicy` am iframe, sonst „Error 153“ | Genaue Angaben in A9 |
+
+Quellen:
+
+- [Abkündigung der Songlink-/Odesli-Schnittstelle](https://linktree.notion.site/API-d0ebe08a5e304a55928405eb682f6741)
+- [Apple Music User Guide for Windows](https://support.apple.com/guide/music-windows/welcome/windows) (kein Kapitel zum Export)
+- [Apple: Apple Music, Apple TV, Apple Devices und iTunes für Windows](https://support.apple.com/118290) (iTunes nur noch für Podcasts und Hörbücher)
+- [Apple Community: „Export a playlist from the Apple Music app on Windows?“](https://discussions.apple.com/thread/255833478)
+- [Apple: Playlists in iTunes auf dem PC sichern](https://support.apple.com/guide/itunes/save-a-copy-of-your-playlists-itns2998/windows) (gilt nur für iTunes)
+- [TuneMyMusic: Apple Music to File](https://www.tunemymusic.com/transfer/apple-music-to-file)
+- [PlaylistGo: Testbericht zu TuneMyMusic](https://www.playlistgo.io/reviews/tunemymusic-alternative/) (Grenze von 500 Songs in der kostenlosen Fassung)
