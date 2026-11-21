@@ -31,6 +31,14 @@ export interface Song {
 /** Was beim Anlegen und Ändern eines Songs gesendet wird. */
 export type SongInput = Omit<Song, 'id' | 'mainGenres' | 'createdAt' | 'updatedAt'>;
 
+/** Eintrag der Merkliste: ein Song, der später erfasst werden soll. */
+export interface NotedSong {
+  id: number;
+  /** „Interpret – Titel“ oder ein Link, so wie eingegeben */
+  text: string;
+  createdAt: string;
+}
+
 export interface Category {
   id: number;
   name: string;

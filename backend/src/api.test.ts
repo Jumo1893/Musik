@@ -240,7 +240,7 @@ describe('API', { skip: unavailable ?? false }, () => {
     bpmSearches.length = 0;
     genreSearches.length = 0;
     await pool.query(
-      'TRUNCATE songs, playlists, categories, youtube_account, youtube_quota_usage RESTART IDENTITY CASCADE',
+      'TRUNCATE songs, playlists, categories, merkliste, youtube_account, youtube_quota_usage RESTART IDENTITY CASCADE',
     );
     fake = new FakeGoogle();
     await pool.query(
@@ -450,6 +450,36 @@ describe('API', { skip: unavailable ?? false }, () => {
         assert.equal((await api('GET', `/api/songs/${id}`)).status, 404, id);
         assert.equal((await api('PUT', `/api/songs/${id}`, { title: 'a', artist: 'b' })).status, 404, id);
       }
+    });
+  });
+
+  describe('Merkliste', () => {
+    test('merkt Songs vor, listet die neuesten zuerst und löscht sie', async () => {
+      const first = await api('POST', '/api/merkliste', { text: '  Johnny Cash – Hurt  ' });
+      assert.equal(first.status, 201);
+      assert.equal(first.body.text, 'Johnny Cash – Hurt');
+      assert.ok(!Number.isNaN(Date.parse(first.body.createdAt)));
+      const second = await api('POST', '/api/merkliste', { text: 'https://youtu.be/8AHCfZTRGiI' });
+
+      const list = await api('GET', '/api/merkliste');
+      assert.deepEqual(
+        list.body.map((entry: Json) => entry.id),
+        [second.body.id, first.body.id],
+      );
+      // Vorgemerktes ist kein Song.
+      assert.deepEqual((await api('GET', '/api/songs')).body, []);
+      assert.equal((await api('GET', '/api/stats')).body.totals.songCount, 0);
+
+      assert.equal((await api('DELETE', `/api/merkliste/${first.body.id}`)).status, 204);
+      assert.equal((await api('DELETE', `/api/merkliste/${first.body.id}`)).status, 404);
+      assert.equal((await api('GET', '/api/merkliste')).body.length, 1);
+    });
+
+    test('lehnt leere Einträge ab', async () => {
+      const empty = await api('POST', '/api/merkliste', { text: '   ' });
+      assert.equal(empty.status, 400);
+      assert.equal(empty.body.fields.text, 'Bitte etwas eintragen: Interpret und Titel oder einen Link.');
+      assert.equal((await api('POST', '/api/merkliste', { text: 'x'.repeat(2001) })).status, 400);
     });
   });
 

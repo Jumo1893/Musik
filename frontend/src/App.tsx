@@ -3,6 +3,7 @@ import { Layout } from './components/Layout.tsx';
 import { EmptyState } from './components/ui.tsx';
 import { CategoriesPage } from './pages/CategoriesPage.tsx';
 import { GeneratorPage } from './pages/GeneratorPage.tsx';
+import { MerklistePage } from './pages/MerklistePage.tsx';
 import { PlaylistPage } from './pages/PlaylistPage.tsx';
 import { PlaylistsPage } from './pages/PlaylistsPage.tsx';
 import { ReleaseYearsPage } from './pages/ReleaseYearsPage.tsx';
@@ -26,6 +27,7 @@ export function App() {
         <Route index element={<Navigate to="/songs" replace />} />
         <Route path="songs" element={<SongsPage />} />
         <Route path="songs/erscheinungsjahre" element={<ReleaseYearsPage />} />
+        <Route path="merkliste" element={<MerklistePage />} />
         <Route path="kategorien" element={<CategoriesPage />} />
         <Route path="playlists" element={<PlaylistsPage />} />
         <Route path="playlists/neu" element={<GeneratorPage />} />

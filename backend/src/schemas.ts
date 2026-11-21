@@ -116,6 +116,11 @@ export const songInputSchema = z.object({
 });
 export type SongInput = z.infer<typeof songInputSchema>;
 
+/** Eintrag der Merkliste: freier Text („Interpret – Titel“) oder ein Link. */
+export const notedSongInputSchema = z.object({
+  text: requiredText(2000, 'Bitte etwas eintragen: Interpret und Titel oder einen Link.'),
+});
+
 export const categoryInputSchema = z.object({
   name: requiredText(60, 'Bitte einen Namen angeben.'),
   color: z

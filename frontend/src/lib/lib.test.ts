@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { Category, GeneratorCriteria, GenreInfo, Song } from '../types.ts';
 import { describeCriteria, EMPTY_CRITERIA } from './criteria.ts';
 import { toCsv, toFilename } from './csv.ts';
-import { formatCount, formatDuration, formatTotalDuration, parseDuration } from './format.ts';
+import { formatCount, formatDuration, formatRelativeTime, formatTotalDuration, parseDuration } from './format.ts';
 import {
   GenreIndex,
   genreTree,
@@ -697,5 +697,16 @@ describe('Vorschläge aus ähnlichen Songs', () => {
       singAlong: null,
     });
     expect(librarySuggestions([self, other], target({ artist: 'Niemand' }), categories).categories).toEqual([]);
+  });
+});
+
+describe('Relative Zeitangaben', () => {
+  test('formatRelativeTime nennt kurze Abstände in Worten, ab einer Woche das Datum', () => {
+    const now = new Date('2026-11-21T12:00:00Z');
+    expect(formatRelativeTime('2026-11-21T11:59:30Z', now)).toBe('gerade eben');
+    expect(formatRelativeTime('2026-11-21T11:55:00Z', now)).toBe('vor 5 Minuten');
+    expect(formatRelativeTime('2026-11-21T09:00:00Z', now)).toBe('vor 3 Stunden');
+    expect(formatRelativeTime('2026-11-20T12:00:00Z', now)).toBe('gestern');
+    expect(formatRelativeTime('2026-11-01T12:00:00Z', now)).toBe('01.11.2026');
   });
 });

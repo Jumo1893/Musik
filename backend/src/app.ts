@@ -5,6 +5,7 @@ import { categoriesRouter } from './routes/categories.ts';
 import { genresRouter } from './routes/genres.ts';
 import { jobsRouter } from './routes/jobs.ts';
 import { lookupRouter } from './routes/lookup.ts';
+import { merklisteRouter } from './routes/merkliste.ts';
 import { playlistsRouter } from './routes/playlists.ts';
 import { songsRouter } from './routes/songs.ts';
 import { statsRouter } from './routes/stats.ts';
@@ -68,6 +69,7 @@ export function createApp(pool: Pool, options: AppOptions): Express {
 
   app.use('/api/songs', songsRouter(pool));
   app.use('/api/categories', categoriesRouter(pool));
+  app.use('/api/merkliste', merklisteRouter(pool));
   app.use('/api/genres', genresRouter(pool));
   app.use('/api/playlists', playlistsRouter(pool, options.youtube));
   app.use('/api/stats', statsRouter(pool));

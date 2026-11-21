@@ -73,6 +73,23 @@ export function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? DASH : dateFormat.format(date);
 }
 
+const relativeFormat = new Intl.RelativeTimeFormat('de', { numeric: 'auto' });
+
+/** „gerade eben“, „vor 5 Minuten“, „gestern“, „vor 3 Tagen“; ab einer Woche das Datum. */
+export function formatRelativeTime(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return DASH;
+  const seconds = Math.round((now.getTime() - date.getTime()) / 1000);
+  if (seconds < 60) return 'gerade eben';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return relativeFormat.format(-minutes, 'minute');
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return relativeFormat.format(-hours, 'hour');
+  const days = Math.round(hours / 24);
+  if (days < 7) return relativeFormat.format(-days, 'day');
+  return dateFormat.format(date);
+}
+
 const longDateFormat = new Intl.DateTimeFormat('de-DE', { dateStyle: 'long' });
 
 /** „3. Mai 2026“ */

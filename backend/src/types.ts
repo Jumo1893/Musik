@@ -28,6 +28,14 @@ export interface Song {
   updatedAt: Date;
 }
 
+/** Eintrag der Merkliste: ein Song, der später erfasst werden soll. */
+export interface NotedSong {
+  id: number;
+  /** „Interpret – Titel“ oder ein Link, so wie eingegeben */
+  text: string;
+  createdAt: Date;
+}
+
 export interface Category {
   id: number;
   name: string;

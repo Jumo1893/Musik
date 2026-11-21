@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { api } from './api.ts';
 import { GenreIndex } from './lib/genres.ts';
-import type { Category, CategoryInput, Playlist, PlaylistInput, Song, SongInput } from './types.ts';
+import type { Category, CategoryInput, NotedSong, Playlist, PlaylistInput, Song, SongInput } from './types.ts';
 
 export const queryKeys = {
   songs: ['songs'],
@@ -15,6 +15,7 @@ export const queryKeys = {
   playlists: ['playlists'],
   stats: ['stats'],
   config: ['config'],
+  merkliste: ['merkliste'],
 } as const;
 
 /**
@@ -69,6 +70,19 @@ export function useGenreIndex(): GenreIndex {
 
 export function useSongs() {
   return useQuery({ queryKey: queryKeys.songs, queryFn: api.songs.list });
+}
+
+/** Merkliste, neueste zuerst */
+export function useMerkliste() {
+  return useQuery({ queryKey: queryKeys.merkliste, queryFn: api.merkliste.list });
+}
+
+export function useAddToMerkliste() {
+  return useChange<string, NotedSong>(api.merkliste.add);
+}
+
+export function useRemoveFromMerkliste() {
+  return useChange<number, void>(api.merkliste.remove);
 }
 
 export function useCategories() {

@@ -20,6 +20,7 @@ import type {
   LibraryJob,
   LinkLookupResult,
   LookupResult,
+  NotedSong,
   YoutubeLinkMatch,
   Playlist,
   PlaylistInput,
@@ -139,6 +140,12 @@ export const api = {
     /** Übernimmt geprüfte Erscheinungsjahre; sonst ändert sich nichts. */
     applyReleaseYears: (changes: Array<{ songId: number; releaseYear: number }>) =>
       request<{ updated: number }>('POST', '/songs/release-years', { changes }),
+  },
+  /** Merkliste: unterwegs vorgemerkte Songs */
+  merkliste: {
+    list: () => request<NotedSong[]>('GET', '/merkliste'),
+    add: (text: string) => request<NotedSong>('POST', '/merkliste', { text }),
+    remove: (id: number) => request<void>('DELETE', `/merkliste/${id}`),
   },
   categories: {
     list: () => request<Category[]>('GET', '/categories'),

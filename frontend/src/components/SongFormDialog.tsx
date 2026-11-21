@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type Ref } from 'react';
 import { Check, CopyCheck, Minus, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage, existingSongIdOf } from '../api.ts';
@@ -354,12 +354,26 @@ interface SongFormDialogProps {
   /** null legt einen neuen Song an */
   song: Song | null;
   onClose: () => void;
+  /** Vorbelegter Suchbegriff oder Link für einen neuen Song (etwa aus der Merkliste); wird gleich gesucht. */
+  initialSearch?: string;
+  /** Nach jedem erfolgreichen Speichern (auch „Speichern & weiterer Song“) */
+  onSaved?: (song: Song) => void;
 }
 
 /** Dialog zum Anlegen und Bearbeiten; „Vorhandenen Song öffnen“ wechselt darin zu einem anderen Song. */
-export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
+export function SongFormDialog({ song, onClose, initialSearch, onSaved }: SongFormDialogProps) {
   const [current, setCurrent] = useState<Song | null>(song);
-  return <SongForm key={current?.id ?? 'neu'} song={current} onClose={onClose} onOpenSong={setCurrent} />;
+  return (
+    <SongForm
+      key={current?.id ?? 'neu'}
+      song={current}
+      onClose={onClose}
+      onOpenSong={setCurrent}
+      // Die Vorbelegung gilt nur für den neuen Song, nicht für einen geöffneten vorhandenen.
+      {...(current === null && initialSearch ? { initialSearch } : {})}
+      {...(onSaved ? { onSaved } : {})}
+    />
+  );
 }
 
 interface SongFormProps extends SongFormDialogProps {
@@ -383,6 +397,8 @@ function missingLinksNote(form: FormState): string {
 }
 
 interface SongSummaryProps {
+  /** Nach der Übernahme eines Treffers bekommt die Karte den Fokus (sonst wäre er weg). */
+  focusRef: Ref<HTMLElement>;
   form: FormState;
   /** Knopf zum Reinhören unter dem Cover */
   listen: ReactNode;
@@ -394,7 +410,16 @@ interface SongSummaryProps {
 }
 
 /** Karte der Schnellerfassung: die Angaben aus dem Treffer auf einen Blick. */
-function SongSummary({ form, listen, bpmSearching, genresSearching, youtubeSearching, detailsOpen, onToggleDetails }: SongSummaryProps) {
+function SongSummary({
+  focusRef,
+  form,
+  listen,
+  bpmSearching,
+  genresSearching,
+  youtubeSearching,
+  detailsOpen,
+  onToggleDetails,
+}: SongSummaryProps) {
   const meta = [form.artist, form.album, form.releaseYear].map((text) => text.trim()).filter(Boolean).join(' · ');
   const hasYoutube = form.youtubeUrl.trim() !== '' || form.youtubeMusicUrl.trim() !== '';
   const links = [
@@ -404,7 +429,7 @@ function SongSummary({ form, listen, bpmSearching, genresSearching, youtubeSearc
     { name: 'YouTube Music', present: hasYoutube, searching: youtubeSearching },
   ];
   return (
-    <section className="song-summary" aria-label="Angaben zum Song">
+    <section ref={focusRef} className="song-summary" aria-label="Angaben zum Song" tabIndex={-1}>
       <div className="song-summary-cover">
         <Artwork url={form.artworkUrl.trim() || null} size={72} />
         {listen}
@@ -502,7 +527,7 @@ function DuplicateNote({ duplicate, editing, onOpen, onIgnore }: { duplicate: Du
   );
 }
 
-function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
+function SongForm({ song, onClose, onOpenSong, initialSearch, onSaved }: SongFormProps) {
   /** Ausgangszustand: gespeicherter Stand bzw. leeres Formular. Weicht das Formular ab, fragt Schließen nach. */
   const [baseline] = useState<FormState>(() => (song ? formFromSong(song) : EMPTY_FORM));
   const [form, setForm] = useState<FormState>(baseline);
@@ -568,8 +593,19 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   const saveSong = useSaveSong();
   const deleteSong = useDeleteSong();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const summaryRef = useRef<HTMLElement>(null);
+  /** Zählt Übernahmen; danach geht der Fokus auf die Karte bzw. das Formular. */
+  const [picks, setPicks] = useState(0);
   const id = useId();
   const busy = saveSong.isPending || deleteSong.isPending;
+
+  // Die Trefferliste verschwindet beim Übernehmen und mit ihr der Fokus. Damit Tastenkürzel
+  // (Strg+Enter) weiter im Dialog ankommen, geht er auf die Karte bzw. das Formular.
+  useEffect(() => {
+    if (picks === 0) return;
+    const target = summaryRef.current ?? bodyRef.current;
+    if (target && !target.contains(document.activeElement)) target.focus({ preventScroll: true });
+  }, [picks]);
 
   // Nach einem fehlgeschlagenen Speichern das erste beanstandete Feld in den Blick holen.
   useEffect(() => {
@@ -644,6 +680,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
       { id: song?.id ?? null, input },
       {
         onSuccess: (saved) => {
+          onSaved?.(saved);
           if (!addAnother) {
             onClose();
             return;
@@ -1348,10 +1385,11 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
           </>
         }
       >
-        <div ref={bodyRef} className="song-form">
+        <div ref={bodyRef} className="song-form" tabIndex={-1}>
           <OnlineSearch
             key={searchKey}
             autoFocus={!song}
+            {...(initialSearch && searchKey === 0 ? { initialTerm: initialSearch } : {})}
             findDuplicate={(result) => findDuplicate({ title: result.title, artist: result.artist, appleMusicUrl: result.appleMusicUrl })}
             onPick={(result, extras) => {
               const next = applyLookup(form, result, genreIndex, extras);
@@ -1363,6 +1401,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
               // Aus einem Videotitel Gelesenes soll man sehen und prüfen können.
               setFromVideo(Boolean(extras?.fromVideo));
               if (extras?.fromVideo) setDetailsOpen(true);
+              setPicks((count) => count + 1);
               setErrors({});
               setFormError(null);
               setSavedNote(null);
@@ -1386,6 +1425,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
           {quick ? (
             <>
               <SongSummary
+                focusRef={summaryRef}
                 form={form}
                 listen={listen}
                 bpmSearching={bpmLookup.state.status === 'searching'}
