@@ -85,6 +85,36 @@ function formFromSong(song: Song): FormState {
   };
 }
 
+function sameText(a: string, b: string): boolean {
+  return a.trim() === b.trim();
+}
+
+function sameIds(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
+
+/** Angaben, die nur der Nutzer kennt; gehen sie verloren, ist echte Arbeit weg. */
+function samePersonalInput(a: FormState, b: FormState): boolean {
+  return (
+    sameIds(a.categoryIds, b.categoryIds) &&
+    a.rating === b.rating &&
+    a.energy === b.energy &&
+    a.singAlong === b.singAlong &&
+    sameText(a.notes, b.notes)
+  );
+}
+
+/** Gleicher Inhalt; Leerzeichen am Rand, die Reihenfolge der Kategorien und Genres zählen nicht. */
+function sameForm(a: FormState, b: FormState): boolean {
+  return (
+    samePersonalInput(a, b) &&
+    sameGenres(a.genres, b.genres) &&
+    (['title', 'artist', 'album', 'duration', 'releaseYear', 'bpm', 'appleMusicUrl', 'youtubeUrl', 'youtubeMusicUrl', 'artworkUrl'] as const).every(
+      (key) => sameText(a[key], b[key]),
+    )
+  );
+}
+
 /** Kennung eines Songs für die Online-Suchen; dieselbe wie in useOnlineLookup. */
 function songKey(artist: string, title: string): string {
   return `${artist.trim().toLowerCase()}|${title.trim().toLowerCase()}`;
@@ -307,7 +337,11 @@ function DuplicateNote({ duplicate, editing, onOpen, onIgnore }: { duplicate: Du
 }
 
 function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
-  const [form, setForm] = useState<FormState>(() => (song ? formFromSong(song) : EMPTY_FORM));
+  /** Ausgangszustand: gespeicherter Stand bzw. leeres Formular. Weicht das Formular ab, fragt Schließen nach. */
+  const [baseline] = useState<FormState>(() => (song ? formFromSong(song) : EMPTY_FORM));
+  const [form, setForm] = useState<FormState>(baseline);
+  /** Wartet auf die Antwort auf „Änderungen verwerfen?“; danach geschieht das hier. */
+  const [pendingDiscard, setPendingDiscard] = useState<(() => void) | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
@@ -377,8 +411,19 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
     setDuplicate(null);
   }
 
+  /** Schließt den Dialog; mit ungespeicherten Änderungen erst nach Rückfrage. */
+  function requestClose() {
+    if (sameForm(form, baseline)) onClose();
+    else setPendingDiscard(() => onClose);
+  }
+
+  /**
+   * Wechselt zu einem vorhandenen Song. Gefragt wird nur, wenn schon Persönliches eingetragen
+   * ist: Titel, Album und Co. aus einem Treffer gehören ja zu genau diesem Song.
+   */
   function openSong(existing: Song) {
-    onOpenSong(existing);
+    if (samePersonalInput(form, baseline)) onOpenSong(existing);
+    else setPendingDiscard(() => () => onOpenSong(existing));
   }
 
   function submit(addAnother: boolean) {
@@ -591,7 +636,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
     <>
       <Modal
         title={song ? 'Song bearbeiten' : 'Song hinzufügen'}
-        onClose={onClose}
+        onClose={requestClose}
         onSubmit={() => submit(false)}
         size="large"
         footer={
@@ -625,7 +670,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
                 {savedNote}
               </p>
             )}
-            <button type="button" className="button" onClick={onClose} disabled={busy}>
+            <button type="button" className="button" onClick={requestClose} disabled={busy}>
               {savedNote ? 'Fertig' : 'Abbrechen'}
             </button>
             {!song && (
@@ -940,6 +985,23 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
             setForm((current) => ({ ...current, categoryIds: [...current.categoryIds, category.id] }))
           }
         />
+      )}
+
+      {pendingDiscard && (
+        <ConfirmDialog
+          title="Änderungen verwerfen?"
+          confirmLabel="Verwerfen"
+          cancelLabel="Weiter bearbeiten"
+          onCancel={() => setPendingDiscard(null)}
+          onConfirm={() => {
+            setPendingDiscard(null);
+            pendingDiscard();
+          }}
+        >
+          {song
+            ? `Deine Änderungen an „${song.title}“ sind noch nicht gespeichert.`
+            : 'Deine Angaben zu diesem Song sind noch nicht gespeichert.'}
+        </ConfirmDialog>
       )}
 
       {confirmingDelete && song && (

@@ -78,14 +78,25 @@ interface ConfirmDialogProps {
   title: string;
   children: ReactNode;
   confirmLabel: string;
+  /** Beschriftung des Knopfs, der nichts tut; er hat den Fokus. */
+  cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
   error?: string | null;
 }
 
-/** Rückfrage vor dem Löschen. */
-export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCancel, busy, error }: ConfirmDialogProps) {
+/** Rückfrage vor dem Löschen oder Verwerfen. */
+export function ConfirmDialog({
+  title,
+  children,
+  confirmLabel,
+  cancelLabel = 'Abbrechen',
+  onConfirm,
+  onCancel,
+  busy,
+  error,
+}: ConfirmDialogProps) {
   return (
     <Modal
       title={title}
@@ -94,7 +105,7 @@ export function ConfirmDialog({ title, children, confirmLabel, onConfirm, onCanc
       footer={
         <>
           <button type="button" className="button" onClick={onCancel} disabled={busy} data-autofocus>
-            Abbrechen
+            {cancelLabel}
           </button>
           <button type="button" className="button button-danger" onClick={onConfirm} disabled={busy}>
             {confirmLabel}
