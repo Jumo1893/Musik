@@ -5,6 +5,7 @@ import { CategoriesPage } from './pages/CategoriesPage.tsx';
 import { GeneratorPage } from './pages/GeneratorPage.tsx';
 import { PlaylistPage } from './pages/PlaylistPage.tsx';
 import { PlaylistsPage } from './pages/PlaylistsPage.tsx';
+import { ReleaseYearsPage } from './pages/ReleaseYearsPage.tsx';
 import { SongsPage } from './pages/SongsPage.tsx';
 import { StatsPage } from './pages/StatsPage.tsx';
 import { YoutubeImportPage } from './pages/YoutubeImportPage.tsx';
@@ -24,6 +25,7 @@ export function App() {
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/songs" replace />} />
         <Route path="songs" element={<SongsPage />} />
+        <Route path="songs/erscheinungsjahre" element={<ReleaseYearsPage />} />
         <Route path="kategorien" element={<CategoriesPage />} />
         <Route path="playlists" element={<PlaylistsPage />} />
         <Route path="playlists/neu" element={<GeneratorPage />} />

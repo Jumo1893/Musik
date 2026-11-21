@@ -9,7 +9,7 @@ import { duplicateFinder, sameSong, type Duplicate } from '../lib/songMatching.t
 import { addGenre, distinctGenres, genreKey } from '../lib/songs.ts';
 import { librarySuggestions, type ScaleHint } from '../lib/suggestions.ts';
 import { useById, useCategories, useConfig, useDeleteSong, useGenreIndex, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
-import type { LookupResult, Song, SongInput } from '../types.ts';
+import type { GenreMatch, LookupResult, Song, SongInput } from '../types.ts';
 import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.tsx';
 import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
@@ -45,6 +45,10 @@ interface FormState {
    * unverändert im Feld, ersetzt ihn die nächste Übernahme eines anderen Songs.
    */
   autoYoutube: { url: string; song: { title: string; artist: string } | null } | null;
+  /** Jahr, das der zuletzt übernommene Treffer eingetragen hat */
+  hitYear: string | null;
+  /** MusicBrainz hat das Jahr der Erstveröffentlichung eingetragen; `previous` war vorher im Feld. */
+  firstYear: { year: string; previous: string; url: string } | null;
 }
 
 type Errors = Record<string, string | undefined>;
@@ -73,6 +77,8 @@ const EMPTY_FORM: FormState = {
   categoryIds: [],
   autoGenres: null,
   autoYoutube: null,
+  hitYear: null,
+  firstYear: null,
 };
 
 function formFromSong(song: Song): FormState {
@@ -95,6 +101,8 @@ function formFromSong(song: Song): FormState {
     categoryIds: song.categoryIds,
     autoGenres: null,
     autoYoutube: null,
+    hitYear: null,
+    firstYear: null,
   };
 }
 
@@ -170,6 +178,8 @@ function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreInd
     album: result.album ?? form.album,
     duration: result.durationSeconds === null ? form.duration : formatDuration(result.durationSeconds),
     releaseYear: result.releaseYear === null ? form.releaseYear : String(result.releaseYear),
+    hitYear: result.releaseYear === null ? form.hitYear : String(result.releaseYear),
+    firstYear: null,
     genres,
     autoGenres,
     appleMusicUrl: result.appleMusicUrl ?? form.appleMusicUrl,
@@ -183,6 +193,21 @@ function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreInd
         : form.autoYoutube,
     artworkUrl: result.artworkUrl ?? form.artworkUrl,
   };
+}
+
+/**
+ * Jahr der Erstveröffentlichung laut MusicBrainz: füllt ein leeres Feld und ersetzt ein späteres
+ * Jahr, solange es noch unverändert aus dem Treffer stammt. Ein selbst eingetragenes Jahr bleibt.
+ */
+function withFirstReleaseYear(form: FormState, match: GenreMatch): FormState {
+  if (match.firstReleaseYear === null) return form;
+  const year = String(match.firstReleaseYear);
+  const current = form.releaseYear.trim();
+  const fromHit = form.hitYear !== null && current === form.hitYear;
+  if (current === '' || (fromHit && match.firstReleaseYear < Number(current))) {
+    return { ...form, releaseYear: year, firstYear: { year, previous: current, url: match.url } };
+  }
+  return form;
 }
 
 /** Leeres Feld → null, gültige Ganzzahl im Bereich → Zahl, alles andere → undefined. */
@@ -686,7 +711,12 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
       { title, artist, durationSeconds: duration.ok ? duration.seconds : null },
       (match) =>
         setForm((current) =>
-          genresReplaceable(current) ? { ...current, genres: match.genres, autoGenres: { genres: match.genres, song } } : current,
+          withFirstReleaseYear(
+            genresReplaceable(current) && match.genres.length > 0
+              ? { ...current, genres: match.genres, autoGenres: { genres: match.genres, song } }
+              : current,
+            match,
+          ),
         ),
       force,
     );
@@ -770,7 +800,8 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   }
 
   const mainGenres = genreIndex.mainGenresOfAll(form.genres);
-  const genreMatch = genreLookup.state.status === 'found' ? genreLookup.state.match : null;
+  // Ein Treffer ohne Genres (nur mit Erscheinungsjahr) zählt für die Genres als „nichts gefunden“.
+  const genreMatch = genreLookup.state.status === 'found' && genreLookup.state.match.genres.length > 0 ? genreLookup.state.match : null;
   const canSearchGenres = form.title.trim() !== '' && form.artist.trim() !== '';
   let genreStatus: ReactNode = null;
   if (genreLookup.state.status === 'searching') {
@@ -803,8 +834,8 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
         )}
       </span>
     );
-  } else if (canSearchGenres && genreLookup.state.status === 'notFound') {
-    genreStatus = <span role="status">Auf MusicBrainz nichts gefunden</span>;
+  } else if (canSearchGenres && (genreLookup.state.status === 'notFound' || genreLookup.state.status === 'found')) {
+    genreStatus = <span role="status">Auf MusicBrainz keine Genres gefunden</span>;
   } else if (canSearchGenres) {
     genreStatus = (
       <span role={genreLookup.state.status === 'error' ? 'alert' : undefined}>
@@ -884,6 +915,33 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
 
   // --- Bausteine des Formulars ---------------------------------------------------
 
+  // Das Jahr stammt von MusicBrainz (Erstveröffentlichung); ein Klick holt das Jahr des Treffers zurück.
+  const firstYear = form.firstYear !== null && form.releaseYear.trim() === form.firstYear.year ? form.firstYear : null;
+  const yearHint: ReactNode = firstYear ? (
+    <span role="status">
+      Erstveröffentlichung laut{' '}
+      <a href={firstYear.url} target="_blank" rel="noopener noreferrer">
+        MusicBrainz
+      </a>
+      {firstYear.previous !== '' && (
+        <>
+          {' ('}
+          <button
+            type="button"
+            className="link-button"
+            title="Das Jahr aus dem Treffer wiederherstellen"
+            onClick={() => setForm((current) => ({ ...current, releaseYear: firstYear.previous, firstYear: null }))}
+          >
+            Treffer: {firstYear.previous}
+          </button>
+          {')'}
+        </>
+      )}
+    </span>
+  ) : (
+    'Erscheinungsjahr'
+  );
+
   const videoHint = fromVideo ? (
     <span className="review-note" role="status">
       Aus dem Videotitel gelesen – bitte prüfen
@@ -953,7 +1011,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
           onChange={(event) => set('duration', event.target.value)}
         />
       </Field>
-      <Field label="Jahr" htmlFor={`${id}-year`} error={errors.releaseYear} hint="Erscheinungsjahr" className="span-2">
+      <Field label="Jahr" htmlFor={`${id}-year`} error={errors.releaseYear} hint={yearHint} className="span-2">
         <input
           id={`${id}-year`}
           className="input"

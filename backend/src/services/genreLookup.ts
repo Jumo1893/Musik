@@ -8,7 +8,13 @@
 import type { Queryable } from '../db.ts';
 import type { GenreMatch } from '../types.ts';
 import { loadGenreCatalog, type CatalogGenre, type GenreCatalog } from './genreCatalog.ts';
-import { MusicBrainzClient, type MbRecording, type MbTag, type MusicBrainzOptions } from './musicBrainz.ts';
+import {
+  MusicBrainzClient,
+  type MbRecording,
+  type MbReleaseGroupHit,
+  type MbTag,
+  type MusicBrainzOptions,
+} from './musicBrainz.ts';
 import { SongQueue } from './songQueue.ts';
 import {
   artistScore,
@@ -16,6 +22,7 @@ import {
   isOtherVersion,
   plainArtist,
   plainTitle,
+  sameVersion,
   simplify,
   titleScore,
   type SongQuery,
@@ -48,6 +55,8 @@ export interface TagLevel {
 
 export interface GenreEvidence {
   recording: { id: string; title: string; artist: string };
+  /** Jahr der frühesten Single, EP oder des frühesten Albums mit dem Song */
+  firstReleaseYear: number | null;
   /** Alle passenden Aufnahmen, die beste zuerst (für Links zum Anhören) */
   recordingIds: string[];
   levels: TagLevel[];
@@ -59,7 +68,7 @@ export interface RankedGenre {
 }
 
 /** Interpret einer Aufnahme so, wie MusicBrainz ihn nennt: „Timbaland feat. OneRepublic“. */
-export function creditName(recording: MbRecording): string {
+export function creditName(recording: Pick<MbRecording, 'artist-credit'>): string {
   return (recording['artist-credit'] ?? [])
     .map((credit) => credit.name + (credit.joinphrase ?? ''))
     .join('')
@@ -102,12 +111,21 @@ function sumTags(recordings: readonly MbRecording[]): MbTag[] {
   return [...counts].map(([name, count]) => ({ name, count }));
 }
 
+/** Jahr aus einem Datum von MusicBrainz („2014-09-18“, „2014“); unbekannt ergibt null. */
+function yearOf(date: string): number | null {
+  const year = Number(date.slice(0, 4));
+  return Number.isInteger(year) && year >= 1000 && year <= 2200 ? year : null;
+}
+
 /**
  * Die Veröffentlichungen, deren Tags etwas über den Song sagen: die erste Single (oder EP)
  * mit seinem Titel und das erste Album, auf dem er erschien. Sampler, Live-Alben und
- * Remix-Sammlungen bleiben außen vor.
+ * Remix-Sammlungen bleiben außen vor. Das frühere der beiden ist die Erstveröffentlichung.
  */
-export function pickReleaseGroups(recordings: readonly MbRecording[], query: SongQuery): { single: string | null; album: string | null } {
+export function pickReleaseGroups(
+  recordings: readonly MbRecording[],
+  query: SongQuery,
+): { single: string | null; album: string | null; firstYear: number | null } {
   const groups = new Map<string, { type: string; title: string; date: string }>();
   for (const recording of recordings) {
     for (const release of recording.releases ?? []) {
@@ -123,10 +141,42 @@ export function pickReleaseGroups(recordings: readonly MbRecording[], query: Son
     [...groups]
       .filter(([, group]) => types.includes(group.type) && fits(group.title))
       .sort((a, b) => a[1].date.localeCompare(b[1].date))[0]?.[0] ?? null;
-  return {
-    single: earliest(['Single', 'EP'], (title) => coreTitle(title) === coreTitle(query.title)),
-    album: earliest(['Album']),
-  };
+  const single = earliest(['Single', 'EP'], (title) => coreTitle(title) === coreTitle(query.title));
+  const album = earliest(['Album']);
+  const years = [single, album]
+    .map((id) => (id === null ? null : yearOf(groups.get(id)!.date)))
+    .filter((year) => year !== null);
+  return { single, album, firstYear: years.length > 0 ? Math.min(...years) : null };
+}
+
+/**
+ * Jahr der Erstveröffentlichung: das früheste aus den Singles und Alben der passenden Aufnahmen
+ * (`picked`, siehe pickReleaseGroups), aus den passenden Aufnahmen selbst (ohne Live-Mitschnitte
+ * und andere Fassungen) und aus den Singles und EPs mit dem Titel des Songs („Folsom Prison
+ * Blues / So Doggone Lonesome“). Bei bekannten Songs liefert die Suche nach Aufnahmen oft nur
+ * Live- und Sampler-Fassungen; die Single findet die Suche nach Veröffentlichungen.
+ */
+export function earliestReleaseYear(
+  picked: number | null,
+  recordings: readonly MbRecording[],
+  singles: readonly MbReleaseGroupHit[],
+  query: SongQuery,
+): number | null {
+  const years = picked === null ? [] : [picked];
+  for (const recording of recordings) {
+    if (/\blive\b/i.test(recording.disambiguation ?? '') || !sameVersion(query.title, recording.title)) continue;
+    const year = yearOf(recording['first-release-date'] ?? '');
+    if (year !== null) years.push(year);
+  }
+  for (const single of singles) {
+    if (!['Single', 'EP'].includes(single['primary-type'] ?? '') || (single['secondary-types'] ?? []).length > 0) continue;
+    const sides = (single.title ?? '').split(/\s+\/\s+/);
+    if (!sides.some((side) => coreTitle(side) === coreTitle(query.title) && sameVersion(query.title, side))) continue;
+    if (artistScore(query.artist, creditName(single)) === 0) continue;
+    const year = yearOf(single['first-release-date'] ?? '');
+    if (year !== null) years.push(year);
+  }
+  return years.length > 0 ? Math.min(...years) : null;
 }
 
 /** Tags einer Ebene, die der Katalog kennt: je Genre die höchste Stimmenzahl („hip hop“ und „rap“). */
@@ -223,10 +273,11 @@ export class GenreLookupService {
     const evidence = await this.#evidence(query, catalog);
     if (!evidence) return null;
     const { genres, suggestions } = chooseGenres(rankGenres(evidence.levels, catalog));
-    if (genres.length === 0) return null;
+    if (genres.length === 0 && evidence.firstReleaseYear === null) return null;
     return {
       genres,
       suggestions,
+      firstReleaseYear: evidence.firstReleaseYear,
       title: evidence.recording.title,
       artist: evidence.recording.artist,
       url: this.#musicBrainz.recordingUrl(evidence.recording.id),
@@ -261,7 +312,7 @@ export class GenreLookupService {
     if (!best) return null;
 
     const levels: TagLevel[] = [{ source: 'recording', tags: sumTags(matching) }];
-    const { single, album } = pickReleaseGroups(matching, query);
+    const { single, album, firstYear } = pickReleaseGroups(matching, query);
     const groupIds = [single, album].filter((id) => id !== null);
     if (groupIds.length > 0) {
       const groups = await this.#musicBrainz.releaseGroups(groupIds);
@@ -277,8 +328,15 @@ export class GenreLookupService {
         levels.push({ source: 'artist', tags: artist?.tags ?? [] });
       }
     }
+    // Ohne die Singles wäre das Jahr oft zu spät geraten (bekannte Songs haben viele spätere
+    // Aufnahmen); dann lieber kein Jahr. Auf die Genres muss man deshalb nicht verzichten.
+    const singles = await this.#musicBrainz.searchSingles(plainTitle(query.title), plainArtist(query.artist)).catch((err: unknown) => {
+      console.warn('Singles auf MusicBrainz nicht gefunden:', err instanceof Error ? err.message : err);
+      return null;
+    });
     return {
       recording: { id: best.id, title: best.title, artist: creditName(best) },
+      firstReleaseYear: singles === null ? null : earliestReleaseYear(firstYear, matching, singles, query),
       recordingIds: matching.map((recording) => recording.id),
       levels,
     };
@@ -303,9 +361,17 @@ export class GenreLookupService {
     return this.#musicBrainz.recordingUrl(recordingId);
   }
 
+  /** Jahr der Erstveröffentlichung laut MusicBrainz samt Seite der Aufnahme; null, wenn unbekannt. */
+  async firstReleaseYear(db: Queryable, query: SongQuery): Promise<{ year: number; url: string } | null> {
+    const catalog = await loadGenreCatalog(db);
+    const evidence = await this.#evidence(query, catalog);
+    if (!evidence || evidence.firstReleaseYear === null) return null;
+    return { year: evidence.firstReleaseYear, url: this.#musicBrainz.recordingUrl(evidence.recording.id) };
+  }
+
   /**
-   * Trägt im Hintergrund die Genres der angegebenen Songs nach, soweit sie noch keine haben.
-   * Die Songs werden nacheinander abgefragt.
+   * Trägt im Hintergrund die Genres und das Erscheinungsjahr der angegebenen Songs nach, soweit
+   * sie noch keine haben. Die Songs werden nacheinander abgefragt.
    */
   fillMissing(db: Queryable, songIds: readonly number[]): void {
     this.#background.add(db, songIds);
@@ -317,17 +383,30 @@ export class GenreLookupService {
   }
 
   async #fillOne(db: Queryable, songId: number): Promise<boolean> {
-    const { rows } = await db.query<{ title: string; artist: string; duration_seconds: number | null }>(
-      `SELECT title, artist, duration_seconds FROM songs WHERE id = $1 AND genres = '{}'`,
+    const { rows } = await db.query<{
+      title: string;
+      artist: string;
+      duration_seconds: number | null;
+      needs_genres: boolean;
+      needs_year: boolean;
+    }>(
+      `SELECT title, artist, duration_seconds, genres = '{}' AS needs_genres, release_year IS NULL AS needs_year
+         FROM songs WHERE id = $1 AND (genres = '{}' OR release_year IS NULL)`,
       [songId],
     );
     const song = rows[0];
     if (!song) return false;
     const match = await this.lookup(db, { title: song.title, artist: song.artist, durationSeconds: song.duration_seconds });
-    // Hat inzwischen jemand Genres eingetragen, bleiben sie.
-    if (match) {
+    // Hat inzwischen jemand Genres oder ein Jahr eingetragen, bleiben sie.
+    if (match && song.needs_genres && match.genres.length > 0) {
       await db.query(`UPDATE songs SET genres = $1::text[], updated_at = now() WHERE id = $2 AND genres = '{}'`, [
         match.genres,
+        songId,
+      ]);
+    }
+    if (match && song.needs_year && match.firstReleaseYear !== null) {
+      await db.query('UPDATE songs SET release_year = $1, updated_at = now() WHERE id = $2 AND release_year IS NULL', [
+        match.firstReleaseYear,
         songId,
       ]);
     }

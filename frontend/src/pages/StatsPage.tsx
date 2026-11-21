@@ -360,6 +360,9 @@ export function StatsPage() {
           {...(decades.length > 0 ? { table: tableFromColumns('Jahrzehnt', decades, total) } : {})}
         >
           {decades.length > 0 ? <ColumnChart columns={decades} /> : <p className="chart-empty">Noch kein Song mit Erscheinungsjahr.</p>}
+          <p className="chart-action">
+            <Link to="/songs/erscheinungsjahre">Erscheinungsjahre mit MusicBrainz prüfen</Link>
+          </p>
         </ChartCard>
 
         <ChartCard

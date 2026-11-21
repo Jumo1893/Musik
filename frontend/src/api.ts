@@ -136,6 +136,9 @@ export const api = {
     create: (input: SongInput) => request<Song>('POST', '/songs', input),
     update: (id: number, input: SongInput) => request<Song>('PUT', `/songs/${id}`, input),
     remove: (id: number) => request<void>('DELETE', `/songs/${id}`),
+    /** Übernimmt geprüfte Erscheinungsjahre; sonst ändert sich nichts. */
+    applyReleaseYears: (changes: Array<{ songId: number; releaseYear: number }>) =>
+      request<{ updated: number }>('POST', '/songs/release-years', { changes }),
   },
   categories: {
     list: () => request<Category[]>('GET', '/categories'),

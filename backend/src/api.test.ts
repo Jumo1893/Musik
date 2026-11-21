@@ -86,6 +86,8 @@ describe('API', { skip: unavailable ?? false }, () => {
       const url = new URL(String(input));
       const query = url.searchParams.get('query') ?? '';
       genreSearches.push(query);
+      // Singles mit dem Titel kennt der Nachbau nicht; das Jahr kommt aus den Aufnahmen.
+      if (url.pathname.endsWith('/release-group')) return Response.json({ 'release-groups': [] });
       const known = [
         {
           id: 'warriors-1',
@@ -114,7 +116,14 @@ describe('API', { skip: unavailable ?? false }, () => {
           score: 100,
           title: song.title,
           'artist-credit': [{ name: song.artist, artist: { id: '00000000-0000-0000-0000-000000000000', name: song.artist } }],
-          releases: [],
+          // Erstveröffentlichung als Single
+          releases: [
+            {
+              id: `${song.id}-release`,
+              date: song.title === 'Warriors' ? '2012-02-14' : '1987-07-27',
+              'release-group': { id: `${song.id}-group`, title: song.title, 'primary-type': 'Single', 'secondary-types': [] },
+            },
+          ],
           tags: song.tags,
         }));
       return Response.json({ recordings });
@@ -848,6 +857,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.deepEqual(found.body.match, {
         genres: ['Alternative Rock'],
         suggestions: ['Pop'],
+        firstReleaseYear: 2012,
         title: 'Warriors',
         artist: 'Imagine Dragons',
         url: 'https://musicbrainz.org/recording/warriors-1',
@@ -857,6 +867,8 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.deepEqual(unknown, { status: 200, body: { match: null } });
       assert.deepEqual(genreSearches, [
         'recording:"Warriors" AND artist:"Imagine Dragons"',
+        // Singles mit dem Titel: für das Jahr der Erstveröffentlichung
+        'releasegroup:"Warriors" AND artist:"Imagine Dragons" AND (primarytype:single OR primarytype:ep)',
         'recording:"Hurt" AND artist:"Johnny Cash"',
       ]);
       assert.equal((await api('GET', '/api/lookup/genres?artist=Johnny+Cash')).status, 400);
@@ -876,6 +888,33 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(response.status, 400);
       assert.equal(response.body.fields.term, 'Bitte einen Suchbegriff angeben.');
       assert.equal((await api('GET', '/api/lookup/itunes?term=a')).status, 400);
+    });
+
+    test('„Erscheinungsjahre prüfen“ findet frühere Jahre und übernimmt sie erst auf Wunsch', async () => {
+      const later = await createSong({ title: 'Warriors', artist: 'Imagine Dragons', releaseYear: 2014 });
+      const missing = await createSong({ title: 'Never Gonna Give You Up', artist: 'Rick Astley' });
+      await createSong({ title: 'Never Gonna Give You Up', artist: 'Rick Astley', album: 'Remaster', releaseYear: 1987 });
+      await createSong({ title: 'Unbekannt', artist: 'Niemand', releaseYear: 1990 });
+
+      const started = await api('POST', '/api/jobs', { kind: 'release-years' });
+      assert.equal(started.status, 202);
+      assert.equal(started.body.total, 4);
+      await jobs.idle();
+      const job = (await api('GET', `/api/jobs/${started.body.id}`)).body;
+      assert.equal(job.status, 'done');
+      assert.deepEqual(
+        job.results.map((result: Json) => [result.songId, result.currentYear, result.firstReleaseYear]),
+        [
+          [later.id, 2014, 2012],
+          [missing.id, null, 1987],
+        ],
+      );
+
+      const applied = await api('POST', '/api/songs/release-years', { changes: [{ songId: later.id, releaseYear: 2012 }] });
+      assert.deepEqual(applied.body, { updated: 1 });
+      assert.equal((await api('GET', `/api/songs/${later.id}`)).body.releaseYear, 2012);
+      assert.equal((await api('GET', `/api/songs/${missing.id}`)).body.releaseYear, null);
+      assert.equal((await api('POST', '/api/songs/release-years', { changes: [] })).status, 400);
     });
 
     test('findet YouTube-Links ohne Konto, im Dialog und für die ganze Bibliothek', async () => {
@@ -1258,6 +1297,10 @@ describe('API', { skip: unavailable ?? false }, () => {
       const genres = new Map<string, Json>(((await api('GET', '/api/songs')).body as Json[]).map((song) => [song.title, song.genres]));
       assert.deepEqual(genres.get('Never Gonna Give You Up'), ['Dance-Pop']);
       assert.deepEqual(genres.get('Shape of You'), []);
+      // Mit den Genres kommt das Jahr der Erstveröffentlichung, wenn es fehlt.
+      const years = new Map<string, Json>(((await api('GET', '/api/songs')).body as Json[]).map((song) => [song.title, song.releaseYear]));
+      assert.equal(years.get('Never Gonna Give You Up'), 1987);
+      assert.equal(years.get('Shape of You'), null);
       assert.ok(!genreSearches.some((search) => search.includes('Hello')), JSON.stringify(genreSearches));
     });
 

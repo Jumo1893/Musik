@@ -143,10 +143,19 @@ export interface YoutubeLinkFinding extends YoutubeLinkMatch {
   songId: number;
 }
 
+/** Fund von „Erscheinungsjahre prüfen“: MusicBrainz kennt ein früheres Jahr (oder das Jahr fehlt). */
+export interface ReleaseYearFinding {
+  songId: number;
+  currentYear: number | null;
+  firstReleaseYear: number;
+  /** Aufnahme bei MusicBrainz */
+  sourceUrl: string;
+}
+
 /** Auftrag, der die Bibliothek im Hintergrund durchgeht. */
 export interface LibraryJob<T = unknown> {
   id: string;
-  kind: 'youtube-links';
+  kind: 'youtube-links' | 'release-years';
   status: 'running' | 'done' | 'failed' | 'cancelled';
   done: number;
   total: number;
@@ -176,6 +185,8 @@ export interface GenreMatch {
   genres: string[];
   /** Weitere Genres, die MusicBrainz für den Song nennt */
   suggestions: string[];
+  /** Jahr der frühesten Single, EP oder des frühesten Albums (ohne Sampler, Live- und Remix-Alben) */
+  firstReleaseYear: number | null;
   /** Gefundene Aufnahme */
   title: string;
   artist: string;

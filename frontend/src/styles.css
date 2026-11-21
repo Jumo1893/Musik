@@ -3135,3 +3135,43 @@ code {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Erscheinungsjahre prüfen */
+.year-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.year-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.year-source {
+  margin-left: 6px;
+  font-size: 12.5px;
+}
+
+.year-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.chart-action {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .year-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .year-change {
+    grid-column: 1;
+  }
+}

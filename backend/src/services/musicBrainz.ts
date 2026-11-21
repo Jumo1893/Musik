@@ -24,20 +24,26 @@ const releaseGroupRefSchema = z.object({
   'secondary-types': z.array(z.string()).nullish(),
 });
 
+const artistCreditSchema = z
+  .array(
+    z.object({
+      name: z.string(),
+      joinphrase: z.string().nullish(),
+      artist: z.object({ id: z.string(), name: z.string() }),
+    }),
+  )
+  .nullish();
+
 const recordingSchema = z.object({
   id: z.string(),
   score: z.number().nullish(),
   title: z.string(),
+  /** Unterscheidet Aufnahmen gleichen Titels, etwa „live, 1964-07-24: …“ */
+  disambiguation: z.string().nullish(),
   length: z.number().nullish(),
-  'artist-credit': z
-    .array(
-      z.object({
-        name: z.string(),
-        joinphrase: z.string().nullish(),
-        artist: z.object({ id: z.string(), name: z.string() }),
-      }),
-    )
-    .nullish(),
+  /** Datum der ersten Veröffentlichung dieser Aufnahme */
+  'first-release-date': z.string().nullish(),
+  'artist-credit': artistCreditSchema,
   releases: z
     .array(
       z.object({
@@ -51,6 +57,15 @@ const recordingSchema = z.object({
 });
 
 const releaseGroupSchema = z.object({ id: z.string(), title: z.string().nullish(), tags: z.array(tagSchema).nullish() });
+/** Treffer der Suche nach Veröffentlichungen (Single, EP …) */
+const releaseGroupHitSchema = z.object({
+  id: z.string(),
+  title: z.string().nullish(),
+  'first-release-date': z.string().nullish(),
+  'primary-type': z.string().nullish(),
+  'secondary-types': z.array(z.string()).nullish(),
+  'artist-credit': artistCreditSchema,
+});
 const relationsSchema = z.object({
   relations: z
     .array(z.object({ type: z.string().nullish(), url: z.object({ resource: z.string() }).nullish() }))
@@ -61,6 +76,7 @@ const artistSchema = z.object({ id: z.string(), name: z.string(), tags: z.array(
 export type MbTag = z.infer<typeof tagSchema>;
 export type MbRecording = z.infer<typeof recordingSchema>;
 export type MbReleaseGroup = z.infer<typeof releaseGroupSchema>;
+export type MbReleaseGroupHit = z.infer<typeof releaseGroupHitSchema>;
 export type MbArtist = z.infer<typeof artistSchema>;
 
 /** Text für eine Lucene-Phrase: Anführungszeichen und Backslash maskieren. */
@@ -101,6 +117,16 @@ export class MusicBrainzClient {
   async searchRecordings(title: string, artist: string, limit = 25): Promise<MbRecording[]> {
     const body = await this.#get('recording', `recording:${phrase(title)} AND artist:${phrase(artist)}`, limit);
     return parse(z.object({ recordings: z.array(recordingSchema) }), body).recordings;
+  }
+
+  /** Singles und EPs mit diesem Titel von diesem Interpreten, samt Datum der ersten Veröffentlichung. */
+  async searchSingles(title: string, artist: string, limit = 25): Promise<MbReleaseGroupHit[]> {
+    const body = await this.#get(
+      'release-group',
+      `releasegroup:${phrase(title)} AND artist:${phrase(artist)} AND (primarytype:single OR primarytype:ep)`,
+      limit,
+    );
+    return parse(z.object({ 'release-groups': z.array(releaseGroupHitSchema) }), body)['release-groups'];
   }
 
   /** Veröffentlichungen (Album, Single …) mit ihren Tags. */

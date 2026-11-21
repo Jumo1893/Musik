@@ -2,7 +2,7 @@ import { Router } from 'express';
 import pg from 'pg';
 import { withTransaction, type Pool } from '../db.ts';
 import { HttpError, notFound, parseId } from '../errors.ts';
-import { songInputSchema, type SongInput } from '../schemas.ts';
+import { releaseYearChangesSchema, songInputSchema, type SongInput } from '../schemas.ts';
 import { createSong, deleteSong, findSameTrack, getSong, listSongs, updateSong } from '../services/songStore.ts';
 
 const SONG = 'Der Song';
@@ -36,6 +36,23 @@ export function songsRouter(pool: Pool): Router {
 
   router.get('/', async (_req, res) => {
     res.json(await listSongs(pool));
+  });
+
+  // POST /api/songs/release-years { changes } – übernimmt geprüfte Erscheinungsjahre, sonst ändert sich nichts.
+  router.post('/release-years', async (req, res) => {
+    const { changes } = releaseYearChangesSchema.parse(req.body);
+    const updated = await withTransaction(pool, async (client) => {
+      let count = 0;
+      for (const change of changes) {
+        const result = await client.query('UPDATE songs SET release_year = $1, updated_at = now() WHERE id = $2', [
+          change.releaseYear,
+          change.songId,
+        ]);
+        count += result.rowCount ?? 0;
+      }
+      return count;
+    });
+    res.json({ updated });
   });
 
   router.get('/:id', async (req, res) => {

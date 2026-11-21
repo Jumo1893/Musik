@@ -178,7 +178,7 @@ export const linkQuerySchema = z.object({
   url: z.string({ error: 'Bitte einen Link angeben.' }).trim().min(1, 'Bitte einen Link angeben.').max(2000, 'Der Link ist zu lang.'),
 });
 
-export const JOB_KINDS = ['youtube-links'] as const;
+export const JOB_KINDS = ['youtube-links', 'release-years'] as const;
 
 /** Art eines Auftrags über die Bibliothek */
 export const jobKindSchema = z.object({
@@ -186,6 +186,14 @@ export const jobKindSchema = z.object({
 });
 
 export const jobStartSchema = jobKindSchema;
+
+/** Erscheinungsjahre übernehmen (Ergebnis von „Erscheinungsjahre prüfen“). */
+export const releaseYearChangesSchema = z.object({
+  changes: z
+    .array(z.object({ songId: idSchema, releaseYear: z.number().int().min(1000).max(2200) }))
+    .min(1, 'Bitte mindestens einen Song auswählen.')
+    .max(5000),
+});
 
 /** Angaben zum Song für die Online-Suche nach Tempo und Genres. */
 export const songLookupQuerySchema = z.object({
