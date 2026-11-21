@@ -60,8 +60,8 @@ export function OnlineSearch({ onPick, autoFocus, findDuplicate }: OnlineSearchP
           placeholder="Titel und Interpret, z. B. „Hurt Johnny Cash“"
           onChange={(event) => setTerm(event.target.value)}
           onKeyDown={(event) => {
-            // Enter soll suchen, nicht das Song-Formular absenden.
-            if (event.key === 'Enter') {
+            // Enter soll suchen, nicht das Song-Formular absenden; Strg+Enter speichert (Dialog).
+            if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey) {
               event.preventDefault();
               runSearch();
             }

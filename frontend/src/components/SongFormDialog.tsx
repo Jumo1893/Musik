@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { CopyCheck, Plus, Search, Trash2 } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Check, CopyCheck, Minus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage, existingSongIdOf } from '../api.ts';
 import { formatDuration, formatLongDate, parseDuration } from '../lib/format.ts';
@@ -42,6 +42,11 @@ interface FormState {
 }
 
 type Errors = Record<string, string | undefined>;
+
+/** Felder, die die Schnellerfassung hinter der Karte zusammenfasst … */
+const DETAIL_FIELDS = ['title', 'artist', 'album', 'genres', 'duration', 'releaseYear', 'bpm'] as const;
+/** … und die im eingeklappten Bereich „Links & Cover“ stehen. */
+const LINK_FIELDS = ['appleMusicUrl', 'youtubeUrl', 'youtubeMusicUrl', 'artworkUrl'] as const;
 
 const EMPTY_FORM: FormState = {
   title: '',
@@ -306,6 +311,86 @@ interface SongFormProps extends SongFormDialogProps {
   onOpenSong: (song: Song) => void;
 }
 
+/** Was im eingeklappten Bereich „Links & Cover“ noch fehlt, z. B. „YouTube-Link fehlt“. */
+function missingLinksNote(form: FormState): string {
+  const missing = [
+    form.appleMusicUrl.trim() === '' ? 'Apple-Music-Link' : null,
+    form.youtubeUrl.trim() === '' && form.youtubeMusicUrl.trim() === '' ? 'YouTube-Link' : null,
+    form.artworkUrl.trim() === '' ? 'Cover' : null,
+  ].filter((item) => item !== null);
+  if (missing.length === 0) return 'alles da';
+  if (missing.length === 1) return `${missing[0]} fehlt`;
+  return `${missing.slice(0, -1).join(', ')} und ${missing[missing.length - 1]} fehlen`;
+}
+
+interface SongSummaryProps {
+  form: FormState;
+  bpmSearching: boolean;
+  genresSearching: boolean;
+  detailsOpen: boolean;
+  onToggleDetails: () => void;
+}
+
+/** Karte der Schnellerfassung: die Angaben aus dem Treffer auf einen Blick. */
+function SongSummary({ form, bpmSearching, genresSearching, detailsOpen, onToggleDetails }: SongSummaryProps) {
+  const meta = [form.artist, form.album, form.releaseYear].map((text) => text.trim()).filter(Boolean).join(' · ');
+  const hasYoutube = form.youtubeUrl.trim() !== '' || form.youtubeMusicUrl.trim() !== '';
+  const links = [
+    { name: 'Apple Music', present: form.appleMusicUrl.trim() !== '' },
+    // Ein YouTube-Link gilt auch für YouTube Music.
+    { name: 'YouTube', present: hasYoutube },
+    { name: 'YouTube Music', present: hasYoutube },
+  ];
+  return (
+    <section className="song-summary" aria-label="Angaben zum Song">
+      <div className="song-summary-cover">
+        <Artwork url={form.artworkUrl.trim() || null} size={72} />
+      </div>
+      <div className="song-summary-main">
+        <div className="song-summary-title">{form.title.trim() || 'Ohne Titel'}</div>
+        {meta && <div className="song-summary-meta">{meta}</div>}
+        <div className="song-summary-facts">
+          <span>Dauer {form.duration.trim() || '–'}</span>
+          <span>
+            Tempo{' '}
+            {bpmSearching ? <span className="searching-note">sucht …</span> : form.bpm.trim() ? `${form.bpm.trim()} BPM` : '–'}
+          </span>
+        </div>
+        <div className="song-summary-genres">
+          {genresSearching ? (
+            <span className="searching-note">Genres: sucht …</span>
+          ) : form.genres.length > 0 ? (
+            form.genres.map((genre) => (
+              <span key={genre} className="chip chip-plain">
+                {genre}
+              </span>
+            ))
+          ) : (
+            <span className="muted">Kein Genre</span>
+          )}
+        </div>
+        <ul className="song-summary-links" aria-label="Links zu den Plattformen">
+          {links.map((link) => (
+            <li key={link.name} className={link.present ? 'summary-link-ok' : 'summary-link-missing'}>
+              {link.present ? <Check size={13} aria-hidden /> : <Minus size={13} aria-hidden />}
+              {link.present ? link.name : `${link.name} fehlt`}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <button
+        type="button"
+        className="button button-small song-summary-edit"
+        aria-expanded={detailsOpen}
+        onClick={onToggleDetails}
+      >
+        <Pencil size={14} aria-hidden />
+        {detailsOpen ? 'Angaben zuklappen' : 'Angaben bearbeiten'}
+      </button>
+    </section>
+  );
+}
+
 /** Hinweis auf einen Song, den es in der Bibliothek schon gibt. */
 function DuplicateNote({ duplicate, editing, onOpen, onIgnore }: { duplicate: Duplicate; editing: boolean; onOpen: () => void; onIgnore: () => void }) {
   const { song } = duplicate;
@@ -355,6 +440,11 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   const [ignoredDuplicates, setIgnoredDuplicates] = useState<number[]>([]);
   /** Vorhandener Song, an dem das Speichern gescheitert ist (HTTP 409) */
   const [conflictSongId, setConflictSongId] = useState<number | null>(null);
+  /** Schnellerfassung nach einem Treffer: Karte statt Felder, Links und Notizen eingeklappt */
+  const [quick, setQuick] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [linksOpen, setLinksOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
 
   const categories = useCategories();
   const songs = useSongs();
@@ -451,6 +541,10 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
           genreLookup.reset();
           setDuplicate(null);
           setIgnoredDuplicates([]);
+          setQuick(false);
+          setDetailsOpen(false);
+          setLinksOpen(false);
+          setNotesOpen(false);
           setSavedNote(`„${saved.title}“ ist gespeichert.`);
         },
         onError: (err) => {
@@ -632,12 +726,293 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   const youtubeLinkWithoutVideo = form.youtubeUrl.trim() !== '' && extractYoutubeId(form.youtubeUrl) === null;
   const conflictSong = conflictSongId === null ? null : (songs.data?.find((existing) => existing.id === conflictSongId) ?? null);
 
+  /** Strg+Enter speichert, Strg+Umschalt+Enter speichert und öffnet den nächsten Song. */
+  function handleShortcut(event: KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== 'Enter' || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    if (!busy) submit(event.shiftKey && !song);
+  }
+
+  // --- Bausteine des Formulars ---------------------------------------------------
+
+  const detailFields = (
+    <div className="form-grid">
+      <Field label="Titel" htmlFor={`${id}-title`} error={errors.title} className="span-3">
+        <input
+          id={`${id}-title`}
+          className="input"
+          value={form.title}
+          maxLength={300}
+          data-autofocus={song ? true : undefined}
+          onChange={(event) => set('title', event.target.value)}
+          onBlur={() => {
+            lookUpOnline(form);
+            checkDuplicate(form);
+          }}
+        />
+      </Field>
+      <Field label="Interpret" htmlFor={`${id}-artist`} error={errors.artist} className="span-3">
+        <input
+          id={`${id}-artist`}
+          className="input"
+          value={form.artist}
+          maxLength={300}
+          onChange={(event) => set('artist', event.target.value)}
+          onBlur={() => {
+            lookUpOnline(form);
+            checkDuplicate(form);
+          }}
+        />
+      </Field>
+      <Field label="Album" htmlFor={`${id}-album`} error={errors.album} className="span-3">
+        <input
+          id={`${id}-album`}
+          className="input"
+          value={form.album}
+          maxLength={300}
+          onChange={(event) => set('album', event.target.value)}
+        />
+      </Field>
+      <Field label="Genres" htmlFor={`${id}-genre`} error={errors.genres} hint={genreHint} className="span-3">
+        <GenrePicker
+          id={`${id}-genre`}
+          value={form.genres}
+          index={genreIndex}
+          libraryGenres={genreOptions}
+          onChange={(genres) => set('genres', genres)}
+        />
+      </Field>
+      <Field label="Dauer" htmlFor={`${id}-duration`} error={errors.duration} hint="Minuten:Sekunden" className="span-2">
+        <input
+          id={`${id}-duration`}
+          className="input"
+          value={form.duration}
+          placeholder="3:45"
+          inputMode="numeric"
+          onChange={(event) => set('duration', event.target.value)}
+        />
+      </Field>
+      <Field label="Jahr" htmlFor={`${id}-year`} error={errors.releaseYear} hint="Erscheinungsjahr" className="span-2">
+        <input
+          id={`${id}-year`}
+          className="input"
+          value={form.releaseYear}
+          placeholder="1994"
+          inputMode="numeric"
+          maxLength={4}
+          onChange={(event) => set('releaseYear', event.target.value)}
+        />
+      </Field>
+      <Field label="BPM" htmlFor={`${id}-bpm`} error={errors.bpm} hint={bpmHint} className="span-2">
+        <input
+          id={`${id}-bpm`}
+          className="input"
+          value={form.bpm}
+          placeholder="120"
+          inputMode="numeric"
+          maxLength={3}
+          onChange={(event) => set('bpm', event.target.value)}
+        />
+      </Field>
+    </div>
+  );
+
+  const categorySection = (
+    <fieldset className="form-section">
+      <legend>Kategorien</legend>
+      <div className="chip-list">
+        {(categories.data ?? []).map((category) => (
+          <ChipToggle
+            key={category.id}
+            category={category}
+            pressed={form.categoryIds.includes(category.id)}
+            onToggle={() => toggleCategory(category.id)}
+          />
+        ))}
+        <button type="button" className="chip chip-add" onClick={() => setCreatingCategory(true)}>
+          <Plus size={14} aria-hidden />
+          Neue Kategorie
+        </button>
+      </div>
+      {errors.categoryIds && (
+        <p className="field-error" role="alert">
+          {errors.categoryIds}
+        </p>
+      )}
+    </fieldset>
+  );
+
+  const scaleSection = (
+    <div className="form-grid">
+      <div className="field span-3">
+        <span className="field-label">Bewertung</span>
+        <ScaleInput
+          variant="stars"
+          groupLabel="Bewertung"
+          labels={RATING_LABELS}
+          value={form.rating}
+          onChange={(value) => set('rating', value)}
+        />
+      </div>
+      <div className="field span-3">
+        <span className="field-label">Energie</span>
+        <ScaleInput
+          variant="levels"
+          groupLabel="Energie"
+          labels={ENERGY_LABELS}
+          value={form.energy}
+          onChange={(value) => set('energy', value)}
+        />
+      </div>
+      <div className="field span-3">
+        <span className="field-label">Mitsingen</span>
+        <ScaleInput
+          variant="levels"
+          groupLabel="Mitsingen"
+          labels={SING_ALONG_LABELS}
+          value={form.singAlong}
+          onChange={(value) => set('singAlong', value)}
+        />
+      </div>
+    </div>
+  );
+
+  const linkFields = (
+    <>
+      <LinkField
+        platform="appleMusic"
+        id={`${id}-apple`}
+        value={form.appleMusicUrl}
+        placeholder="https://music.apple.com/…"
+        query={query}
+        error={errors.appleMusicUrl}
+        onChange={(value) => set('appleMusicUrl', value)}
+        onBlur={() => checkDuplicate(form)}
+      />
+      <LinkField
+        platform="youtube"
+        id={`${id}-youtube`}
+        value={form.youtubeUrl}
+        placeholder="https://www.youtube.com/watch?v=…"
+        query={query}
+        error={errors.youtubeUrl}
+        hint={
+          youtubeLinkWithoutVideo
+            ? 'Das sieht nicht nach dem Link zu einem einzelnen Video aus – für YouTube-Playlists wird ein Video-Link gebraucht.'
+            : undefined
+        }
+        onChange={(value) => set('youtubeUrl', value)}
+        onBlur={() => checkDuplicate(form)}
+        onSearch={youtubeReady ? searchYoutube : undefined}
+        searching={youtubeSearch.isPending}
+      />
+      {youtubeSearch.isError && (
+        <p className="field-error" role="alert">
+          {errorMessage(youtubeSearch.error)}
+        </p>
+      )}
+      {youtubeSearch.data &&
+        (youtubeSearch.data.length === 0 ? (
+          <p className="field-hint" role="status">
+            Auf YouTube nichts gefunden.
+          </p>
+        ) : (
+          <div className="youtube-results">
+            <ul className="lookup-results" aria-label="Treffer auf YouTube">
+              {youtubeSearch.data.map((video) => (
+                <li key={video.videoId}>
+                  <button
+                    type="button"
+                    className="lookup-result"
+                    onClick={() => {
+                      set('youtubeUrl', youtubeVideoUrl(video.videoId));
+                      checkDuplicate({ ...form, youtubeUrl: youtubeVideoUrl(video.videoId) });
+                      youtubeSearch.reset();
+                    }}
+                  >
+                    <Artwork url={video.thumbnailUrl} size={44} />
+                    <span className="lookup-text">
+                      <span className="lookup-title">{video.title}</span>
+                      <span className="lookup-meta">
+                        {video.channelTitle ?? 'Unbekannter Kanal'}
+                        {video.recommended && ' · passt am besten'}
+                      </span>
+                    </span>
+                    <span className="lookup-duration">{formatDuration(video.durationSeconds)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="field-hint">
+              Ein Klick übernimmt das Video.
+              {youtubeStatus.data &&
+                ` Heute noch ${Math.max(0, youtubeStatus.data.quota.searchesLimit - youtubeStatus.data.quota.searchesUsed)} von ${youtubeStatus.data.quota.searchesLimit} Suchen frei.`}
+            </p>
+          </div>
+        ))}
+      <LinkField
+        platform="youtubeMusic"
+        id={`${id}-youtube-music`}
+        value={form.youtubeMusicUrl}
+        placeholder="https://music.youtube.com/watch?v=…"
+        query={query}
+        error={errors.youtubeMusicUrl}
+        hint="Kann leer bleiben, wenn ein YouTube-Link eingetragen ist – der funktioniert auch in YouTube Music."
+        onChange={(value) => set('youtubeMusicUrl', value)}
+        onBlur={() => checkDuplicate(form)}
+      />
+    </>
+  );
+
+  const coverField = (
+    <Field
+      label="Cover"
+      htmlFor={`${id}-artwork`}
+      error={errors.artworkUrl}
+      hint="Adresse eines Bildes; es wird nur verlinkt, nicht gespeichert."
+      className="span-6"
+    >
+      <div className="input-with-action">
+        <Artwork url={form.artworkUrl.trim() || null} size={36} />
+        <input
+          id={`${id}-artwork`}
+          className="input"
+          type="url"
+          inputMode="url"
+          value={form.artworkUrl}
+          placeholder="https://…"
+          onChange={(event) => set('artworkUrl', event.target.value)}
+        />
+      </div>
+    </Field>
+  );
+
+  const notesField = (
+    <Field label="Notizen" htmlFor={`${id}-notes`} error={errors.notes} className="span-6">
+      <textarea
+        id={`${id}-notes`}
+        className="input textarea"
+        rows={3}
+        value={form.notes}
+        maxLength={5000}
+        placeholder="Woran erinnert dich der Song? Wann passt er?"
+        onChange={(event) => set('notes', event.target.value)}
+      />
+    </Field>
+  );
+
+  // Schnellerfassung: Eingeklappte Teile öffnen sich von selbst, sobald darin ein Fehler steht.
+  const detailsVisible = detailsOpen || DETAIL_FIELDS.some((key) => errors[key]);
+  const linksVisible = linksOpen || LINK_FIELDS.some((key) => errors[key]);
+  const notesVisible = notesOpen || Boolean(errors.notes);
+
   return (
     <>
       <Modal
         title={song ? 'Song bearbeiten' : 'Song hinzufügen'}
         onClose={requestClose}
         onSubmit={() => submit(false)}
+        onKeyDown={handleShortcut}
         size="large"
         footer={
           <>
@@ -674,11 +1049,17 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
               {savedNote ? 'Fertig' : 'Abbrechen'}
             </button>
             {!song && (
-              <button type="button" className="button" onClick={() => submit(true)} disabled={busy}>
+              <button
+                type="button"
+                className="button"
+                onClick={() => submit(true)}
+                disabled={busy}
+                title="Speichern und gleich den nächsten Song erfassen (Strg+Umschalt+Enter)"
+              >
                 Speichern &amp; weiterer Song
               </button>
             )}
-            <button type="submit" className="button button-primary" disabled={busy}>
+            <button type="submit" className="button button-primary" disabled={busy} title="Speichern (Strg+Enter)">
               Speichern
             </button>
           </>
@@ -694,6 +1075,8 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
               setForm((current) => applyLookup(current, result, genreIndex));
               lookUpOnline(next);
               checkDuplicate(next);
+              // Beim Anlegen steht danach das Persönliche im Mittelpunkt; beim Bearbeiten bleibt das ganze Formular.
+              if (!song) setQuick(true);
               setErrors({});
               setFormError(null);
               setSavedNote(null);
@@ -709,270 +1092,60 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
             />
           )}
 
-          <div className="form-grid">
-            <Field label="Titel" htmlFor={`${id}-title`} error={errors.title} className="span-3">
-              <input
-                id={`${id}-title`}
-                className="input"
-                value={form.title}
-                maxLength={300}
-                data-autofocus={song ? true : undefined}
-                onChange={(event) => set('title', event.target.value)}
-                onBlur={() => {
-                  lookUpOnline(form);
-                  checkDuplicate(form);
-                }}
+          {quick ? (
+            <>
+              <SongSummary
+                form={form}
+                bpmSearching={bpmLookup.state.status === 'searching'}
+                genresSearching={genreLookup.state.status === 'searching'}
+                detailsOpen={detailsVisible}
+                onToggleDetails={() => setDetailsOpen(!detailsVisible)}
               />
-            </Field>
-            <Field label="Interpret" htmlFor={`${id}-artist`} error={errors.artist} className="span-3">
-              <input
-                id={`${id}-artist`}
-                className="input"
-                value={form.artist}
-                maxLength={300}
-                onChange={(event) => set('artist', event.target.value)}
-                onBlur={() => {
-                  lookUpOnline(form);
-                  checkDuplicate(form);
-                }}
-              />
-            </Field>
-            <Field label="Album" htmlFor={`${id}-album`} error={errors.album} className="span-3">
-              <input
-                id={`${id}-album`}
-                className="input"
-                value={form.album}
-                maxLength={300}
-                onChange={(event) => set('album', event.target.value)}
-              />
-            </Field>
-            <Field
-              label="Genres"
-              htmlFor={`${id}-genre`}
-              error={errors.genres}
-              hint={genreHint}
-              className="span-3"
-            >
-              <GenrePicker
-                id={`${id}-genre`}
-                value={form.genres}
-                index={genreIndex}
-                libraryGenres={genreOptions}
-                onChange={(genres) => set('genres', genres)}
-              />
-            </Field>
-            <Field label="Dauer" htmlFor={`${id}-duration`} error={errors.duration} hint="Minuten:Sekunden" className="span-2">
-              <input
-                id={`${id}-duration`}
-                className="input"
-                value={form.duration}
-                placeholder="3:45"
-                inputMode="numeric"
-                onChange={(event) => set('duration', event.target.value)}
-              />
-            </Field>
-            <Field label="Jahr" htmlFor={`${id}-year`} error={errors.releaseYear} hint="Erscheinungsjahr" className="span-2">
-              <input
-                id={`${id}-year`}
-                className="input"
-                value={form.releaseYear}
-                placeholder="1994"
-                inputMode="numeric"
-                maxLength={4}
-                onChange={(event) => set('releaseYear', event.target.value)}
-              />
-            </Field>
-            <Field label="BPM" htmlFor={`${id}-bpm`} error={errors.bpm} hint={bpmHint} className="span-2">
-              <input
-                id={`${id}-bpm`}
-                className="input"
-                value={form.bpm}
-                placeholder="120"
-                inputMode="numeric"
-                maxLength={3}
-                onChange={(event) => set('bpm', event.target.value)}
-              />
-            </Field>
-          </div>
-
-          <fieldset className="form-section">
-            <legend>Kategorien</legend>
-            <div className="chip-list">
-              {(categories.data ?? []).map((category) => (
-                <ChipToggle
-                  key={category.id}
-                  category={category}
-                  pressed={form.categoryIds.includes(category.id)}
-                  onToggle={() => toggleCategory(category.id)}
-                />
-              ))}
-              <button type="button" className="chip chip-add" onClick={() => setCreatingCategory(true)}>
-                <Plus size={14} aria-hidden />
-                Neue Kategorie
-              </button>
-            </div>
-            {errors.categoryIds && (
-              <p className="field-error" role="alert">
-                {errors.categoryIds}
-              </p>
-            )}
-          </fieldset>
-
-          <div className="form-grid">
-            <div className="field span-3">
-              <span className="field-label">Bewertung</span>
-              <ScaleInput
-                variant="stars"
-                groupLabel="Bewertung"
-                labels={RATING_LABELS}
-                value={form.rating}
-                onChange={(value) => set('rating', value)}
-              />
-            </div>
-            <div className="field span-3">
-              <span className="field-label">Energie</span>
-              <ScaleInput
-                variant="levels"
-                groupLabel="Energie"
-                labels={ENERGY_LABELS}
-                value={form.energy}
-                onChange={(value) => set('energy', value)}
-              />
-            </div>
-            <div className="field span-3">
-              <span className="field-label">Mitsingen</span>
-              <ScaleInput
-                variant="levels"
-                groupLabel="Mitsingen"
-                labels={SING_ALONG_LABELS}
-                value={form.singAlong}
-                onChange={(value) => set('singAlong', value)}
-              />
-            </div>
-          </div>
-
-          <fieldset className="form-section">
-            <legend>Links zu Streaming-Plattformen</legend>
-            <p className="field-hint section-hint">
-              Alles optional: Ohne gespeicherten Link führt der Knopf in der Songliste zur Suche auf der Plattform.
-            </p>
-            <LinkField
-              platform="appleMusic"
-              id={`${id}-apple`}
-              value={form.appleMusicUrl}
-              placeholder="https://music.apple.com/…"
-              query={query}
-              error={errors.appleMusicUrl}
-              onChange={(value) => set('appleMusicUrl', value)}
-              onBlur={() => checkDuplicate(form)}
-            />
-            <LinkField
-              platform="youtube"
-              id={`${id}-youtube`}
-              value={form.youtubeUrl}
-              placeholder="https://www.youtube.com/watch?v=…"
-              query={query}
-              error={errors.youtubeUrl}
-              hint={
-                youtubeLinkWithoutVideo
-                  ? 'Das sieht nicht nach dem Link zu einem einzelnen Video aus – für YouTube-Playlists wird ein Video-Link gebraucht.'
-                  : undefined
-              }
-              onChange={(value) => set('youtubeUrl', value)}
-              onBlur={() => checkDuplicate(form)}
-              onSearch={youtubeReady ? searchYoutube : undefined}
-              searching={youtubeSearch.isPending}
-            />
-            {youtubeSearch.isError && (
-              <p className="field-error" role="alert">
-                {errorMessage(youtubeSearch.error)}
-              </p>
-            )}
-            {youtubeSearch.data &&
-              (youtubeSearch.data.length === 0 ? (
-                <p className="field-hint" role="status">
-                  Auf YouTube nichts gefunden.
-                </p>
-              ) : (
-                <div className="youtube-results">
-                  <ul className="lookup-results" aria-label="Treffer auf YouTube">
-                    {youtubeSearch.data.map((video) => (
-                      <li key={video.videoId}>
-                        <button
-                          type="button"
-                          className="lookup-result"
-                          onClick={() => {
-                            set('youtubeUrl', youtubeVideoUrl(video.videoId));
-                            checkDuplicate({ ...form, youtubeUrl: youtubeVideoUrl(video.videoId) });
-                            youtubeSearch.reset();
-                          }}
-                        >
-                          <Artwork url={video.thumbnailUrl} size={44} />
-                          <span className="lookup-text">
-                            <span className="lookup-title">{video.title}</span>
-                            <span className="lookup-meta">
-                              {video.channelTitle ?? 'Unbekannter Kanal'}
-                              {video.recommended && ' · passt am besten'}
-                            </span>
-                          </span>
-                          <span className="lookup-duration">{formatDuration(video.durationSeconds)}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="field-hint">
-                    Ein Klick übernimmt das Video.
-                    {youtubeStatus.data &&
-                      ` Heute noch ${Math.max(0, youtubeStatus.data.quota.searchesLimit - youtubeStatus.data.quota.searchesUsed)} von ${youtubeStatus.data.quota.searchesLimit} Suchen frei.`}
-                  </p>
+              {detailsVisible && detailFields}
+              {categorySection}
+              {scaleSection}
+              <details
+                className="form-collapsible"
+                open={linksVisible}
+                onToggle={(event) => setLinksOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  Links &amp; Cover <span className="collapsible-note">{missingLinksNote(form)}</span>
+                </summary>
+                <div className="collapsible-body">
+                  {linkFields}
+                  <div className="form-grid">{coverField}</div>
                 </div>
-              ))}
-            <LinkField
-              platform="youtubeMusic"
-              id={`${id}-youtube-music`}
-              value={form.youtubeMusicUrl}
-              placeholder="https://music.youtube.com/watch?v=…"
-              query={query}
-              error={errors.youtubeMusicUrl}
-              hint="Kann leer bleiben, wenn ein YouTube-Link eingetragen ist – der funktioniert auch in YouTube Music."
-              onChange={(value) => set('youtubeMusicUrl', value)}
-              onBlur={() => checkDuplicate(form)}
-            />
-          </fieldset>
-
-          <div className="form-grid">
-            <Field
-              label="Cover"
-              htmlFor={`${id}-artwork`}
-              error={errors.artworkUrl}
-              hint="Adresse eines Bildes; es wird nur verlinkt, nicht gespeichert."
-              className="span-6"
-            >
-              <div className="input-with-action">
-                <Artwork url={form.artworkUrl.trim() || null} size={36} />
-                <input
-                  id={`${id}-artwork`}
-                  className="input"
-                  type="url"
-                  inputMode="url"
-                  value={form.artworkUrl}
-                  placeholder="https://…"
-                  onChange={(event) => set('artworkUrl', event.target.value)}
-                />
+              </details>
+              <details
+                className="form-collapsible"
+                open={notesVisible}
+                onToggle={(event) => setNotesOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  Notizen <span className="collapsible-note">{form.notes.trim() === '' ? 'noch keine' : 'eingetragen'}</span>
+                </summary>
+                <div className="collapsible-body">{notesField}</div>
+              </details>
+            </>
+          ) : (
+            <>
+              {detailFields}
+              {categorySection}
+              {scaleSection}
+              <fieldset className="form-section">
+                <legend>Links zu Streaming-Plattformen</legend>
+                <p className="field-hint section-hint">
+                  Alles optional: Ohne gespeicherten Link führt der Knopf in der Songliste zur Suche auf der Plattform.
+                </p>
+                {linkFields}
+              </fieldset>
+              <div className="form-grid">
+                {coverField}
+                {notesField}
               </div>
-            </Field>
-            <Field label="Notizen" htmlFor={`${id}-notes`} error={errors.notes} className="span-6">
-              <textarea
-                id={`${id}-notes`}
-                className="input textarea"
-                rows={3}
-                value={form.notes}
-                maxLength={5000}
-                placeholder="Woran erinnert dich der Song? Wann passt er?"
-                onChange={(event) => set('notes', event.target.value)}
-              />
-            </Field>
-          </div>
+            </>
+          )}
         </div>
       </Modal>
 

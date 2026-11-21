@@ -290,6 +290,8 @@ export function GenrePicker({ id, value, index, libraryGenres, onChange }: Genre
         }
         break;
       case 'Enter':
+        // Strg+Enter speichert den ganzen Song (Kürzel des Dialogs).
+        if (event.ctrlKey || event.metaKey) break;
         // Enter wählt aus bzw. übernimmt; das Song-Formular wird nur bei leerem, geschlossenem Feld abgeschickt.
         if (row) {
           event.preventDefault();

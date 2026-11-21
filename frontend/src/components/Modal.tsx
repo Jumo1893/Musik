@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -9,6 +9,8 @@ interface ModalProps {
   footer?: ReactNode;
   /** Macht den Inhalt zum Formular: Enter und ein Knopf mit type="submit" lösen onSubmit aus. */
   onSubmit?: () => void;
+  /** Tastenkürzel für den ganzen Dialog, etwa Strg+Enter */
+  onKeyDown?: (event: KeyboardEvent<HTMLDialogElement>) => void;
   size?: 'small' | 'medium' | 'large';
 }
 
@@ -16,7 +18,7 @@ interface ModalProps {
  * Dialog auf Basis des nativen <dialog>-Elements: Der Browser kümmert sich um
  * Fokusfalle, Escape-Taste und darum, dass der Rest der Seite nicht bedienbar ist.
  */
-export function Modal({ title, onClose, children, footer, onSubmit, size = 'medium' }: ModalProps) {
+export function Modal({ title, onClose, children, footer, onSubmit, onKeyDown, size = 'medium' }: ModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -42,6 +44,7 @@ export function Modal({ title, onClose, children, footer, onSubmit, size = 'medi
       ref={dialogRef}
       className={`modal modal-${size}`}
       aria-labelledby={titleId}
+      onKeyDown={onKeyDown}
       onCancel={(event) => {
         // Escape: Schließen dem Aufrufer überlassen, damit der Zustand in React stimmt.
         event.preventDefault();
