@@ -268,7 +268,7 @@ function LinksCard({ status }: { status: YoutubeStatus }) {
   const missing = (songs.data ?? []).filter((song) => youtubeIdOf(song) === null);
   return (
     <section className="card youtube-card" aria-labelledby="youtube-links">
-      <h2 id="youtube-links">Fehlende Links finden</h2>
+      <h2 id="youtube-links">Fehlende YouTube-Links</h2>
       {songs.isPending ? <LoadingNote label="Lade Songs …" /> : <YoutubeLinkFinder songs={missing} status={status} />}
     </section>
   );
@@ -312,7 +312,8 @@ export function YoutubePage() {
       ) : (
         <div className="youtube-layout">
           <ConnectionCard status={status.data} />
-          {ready && <LinksCard status={status.data} />}
+          {/* Fehlende Links lassen sich auch ohne verbundenes Konto ergänzen (Wikidata, MusicBrainz). */}
+          <LinksCard status={status.data} />
           {ready && <PlaylistsCard />}
           {ready && (
             <p className="field-hint youtube-note">

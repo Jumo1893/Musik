@@ -48,6 +48,8 @@ export interface TagLevel {
 
 export interface GenreEvidence {
   recording: { id: string; title: string; artist: string };
+  /** Alle passenden Aufnahmen, die beste zuerst (für Links zum Anhören) */
+  recordingIds: string[];
   levels: TagLevel[];
 }
 
@@ -275,7 +277,30 @@ export class GenreLookupService {
         levels.push({ source: 'artist', tags: artist?.tags ?? [] });
       }
     }
-    return { recording: { id: best.id, title: best.title, artist: creditName(best) }, levels };
+    return {
+      recording: { id: best.id, title: best.title, artist: creditName(best) },
+      recordingIds: matching.map((recording) => recording.id),
+      levels,
+    };
+  }
+
+  /**
+   * Aufnahmen bei MusicBrainz, die zum Song passen, die beste zuerst. Kommt aus dem
+   * Zwischenspeicher der Genre-Suche, kostet also meist keine weitere Anfrage.
+   */
+  async recordingIds(db: Queryable, query: SongQuery): Promise<string[]> {
+    const catalog = await loadGenreCatalog(db);
+    return (await this.#evidence(query, catalog))?.recordingIds ?? [];
+  }
+
+  /** Links zum kostenlosen Anhören, die MusicBrainz an einer Aufnahme führt (etwa YouTube). */
+  recordingStreamingUrls(recordingId: string): Promise<string[]> {
+    return this.#musicBrainz.recordingStreamingUrls(recordingId);
+  }
+
+  /** Seite einer Aufnahme auf musicbrainz.org */
+  recordingUrl(recordingId: string): string {
+    return this.#musicBrainz.recordingUrl(recordingId);
   }
 
   /**

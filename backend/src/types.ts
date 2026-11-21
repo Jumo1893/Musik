@@ -87,6 +87,42 @@ export type LinkLookupResult =
       results: LookupResult[];
     };
 
+/** YouTube-Video zu einem Song, gefunden ohne Konto und ohne Kontingent. */
+export interface YoutubeLinkMatch {
+  videoId: string;
+  /** https://www.youtube.com/watch?v=… */
+  url: string;
+  /** Woher der Link stammt */
+  source: 'wikidata' | 'musicbrainz';
+  /** Eintrag bei der Quelle (Wikidata-Seite oder MusicBrainz-Aufnahme) */
+  sourceUrl: string;
+  /** Titel, Kanal und Vorschaubild laut YouTube (geprüft über oEmbed) */
+  videoTitle: string;
+  channel: string | null;
+  thumbnailUrl: string | null;
+}
+
+/** Fund eines Hintergrundauftrags „Fehlende YouTube-Links ergänzen“. */
+export interface YoutubeLinkFinding extends YoutubeLinkMatch {
+  songId: number;
+}
+
+/** Auftrag, der die ganze Bibliothek im Hintergrund durchgeht. */
+export interface LibraryJob<T = unknown> {
+  id: string;
+  kind: 'youtube-links';
+  status: 'running' | 'done' | 'failed' | 'cancelled';
+  /** So viele Songs sind schon durch … */
+  done: number;
+  /** … von so vielen */
+  total: number;
+  /** Funde, laufend ergänzt */
+  results: T[];
+  error: string | null;
+  startedAt: Date;
+  finishedAt: Date | null;
+}
+
 /** Eintrag der Genre-Liste für Auswahllisten. */
 export interface GenreInfo {
   name: string;

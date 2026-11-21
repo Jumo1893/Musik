@@ -5,12 +5,14 @@ import type { GenreLookupService } from '../services/genreLookup.ts';
 import { searchItunes } from '../services/itunes.ts';
 import type { LinkLookupService } from '../services/linkLookup.ts';
 import type { SongBpmService } from '../services/songBpm.ts';
+import type { YoutubeLinkService } from '../services/youtubeLinks.ts';
 
 export interface LookupServices {
   itunesCountry: string;
   songBpm: SongBpmService;
   genreLookup: GenreLookupService;
   linkLookup: LinkLookupService;
+  youtubeLinks: YoutubeLinkService;
 }
 
 export function lookupRouter(pool: Pool, services: LookupServices): Router {
@@ -33,6 +35,13 @@ export function lookupRouter(pool: Pool, services: LookupServices): Router {
   router.get('/bpm', async (req, res) => {
     const { title, artist, duration } = songLookupQuerySchema.parse(req.query);
     res.json({ match: await services.songBpm.lookup({ title, artist, durationSeconds: duration ?? null }) });
+  });
+
+  // GET /api/lookup/youtube?title=…&artist=…&duration=… – sucht einen YouTube-Link bei Wikidata und
+  // MusicBrainz, ohne YouTube-Konto. { match: null } heißt: Keine Quelle kennt ein passendes Video.
+  router.get('/youtube', async (req, res) => {
+    const { title, artist, duration } = songLookupQuerySchema.parse(req.query);
+    res.json({ match: await services.youtubeLinks.lookup(pool, { title, artist, durationSeconds: duration ?? null }) });
   });
 
   // GET /api/lookup/genres?title=…&artist=…&duration=… – sucht die Genres auf MusicBrainz.

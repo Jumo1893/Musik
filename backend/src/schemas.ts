@@ -178,6 +178,15 @@ export const linkQuerySchema = z.object({
   url: z.string({ error: 'Bitte einen Link angeben.' }).trim().min(1, 'Bitte einen Link angeben.').max(2000, 'Der Link ist zu lang.'),
 });
 
+export const JOB_KINDS = ['youtube-links'] as const;
+
+/** Art eines Auftrags über die Bibliothek */
+export const jobKindSchema = z.object({
+  kind: z.enum(JOB_KINDS, { error: 'Diese Art von Auftrag gibt es nicht.' }),
+});
+
+export const jobStartSchema = jobKindSchema;
+
 /** Angaben zum Song für die Online-Suche nach Tempo und Genres. */
 export const songLookupQuerySchema = z.object({
   title: z.string({ error: 'Bitte einen Titel angeben.' }).trim().min(1, 'Bitte einen Titel angeben.').max(300),

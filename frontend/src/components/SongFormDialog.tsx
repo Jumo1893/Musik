@@ -335,6 +335,9 @@ interface SongFormProps extends SongFormDialogProps {
   onOpenSong: (song: Song) => void;
 }
 
+/** Quellen für YouTube-Links ohne Konto */
+const YOUTUBE_LINK_SOURCES = { wikidata: 'Wikidata', musicbrainz: 'MusicBrainz' } as const;
+
 /** Was im eingeklappten Bereich „Links & Cover“ noch fehlt, z. B. „YouTube-Link fehlt“. */
 function missingLinksNote(form: FormState): string {
   const missing = [
@@ -351,19 +354,20 @@ interface SongSummaryProps {
   form: FormState;
   bpmSearching: boolean;
   genresSearching: boolean;
+  youtubeSearching: boolean;
   detailsOpen: boolean;
   onToggleDetails: () => void;
 }
 
 /** Karte der Schnellerfassung: die Angaben aus dem Treffer auf einen Blick. */
-function SongSummary({ form, bpmSearching, genresSearching, detailsOpen, onToggleDetails }: SongSummaryProps) {
+function SongSummary({ form, bpmSearching, genresSearching, youtubeSearching, detailsOpen, onToggleDetails }: SongSummaryProps) {
   const meta = [form.artist, form.album, form.releaseYear].map((text) => text.trim()).filter(Boolean).join(' · ');
   const hasYoutube = form.youtubeUrl.trim() !== '' || form.youtubeMusicUrl.trim() !== '';
   const links = [
-    { name: 'Apple Music', present: form.appleMusicUrl.trim() !== '' },
+    { name: 'Apple Music', present: form.appleMusicUrl.trim() !== '', searching: false },
     // Ein YouTube-Link gilt auch für YouTube Music.
-    { name: 'YouTube', present: hasYoutube },
-    { name: 'YouTube Music', present: hasYoutube },
+    { name: 'YouTube', present: hasYoutube, searching: youtubeSearching },
+    { name: 'YouTube Music', present: hasYoutube, searching: youtubeSearching },
   ];
   return (
     <section className="song-summary" aria-label="Angaben zum Song">
@@ -394,12 +398,18 @@ function SongSummary({ form, bpmSearching, genresSearching, detailsOpen, onToggl
           )}
         </div>
         <ul className="song-summary-links" aria-label="Links zu den Plattformen">
-          {links.map((link) => (
-            <li key={link.name} className={link.present ? 'summary-link-ok' : 'summary-link-missing'}>
-              {link.present ? <Check size={13} aria-hidden /> : <Minus size={13} aria-hidden />}
-              {link.present ? link.name : `${link.name} fehlt`}
-            </li>
-          ))}
+          {links.map((link) =>
+            !link.present && link.searching ? (
+              <li key={link.name} className="searching-note">
+                {link.name}: sucht …
+              </li>
+            ) : (
+              <li key={link.name} className={link.present ? 'summary-link-ok' : 'summary-link-missing'}>
+                {link.present ? <Check size={13} aria-hidden /> : <Minus size={13} aria-hidden />}
+                {link.present ? link.name : `${link.name} fehlt`}
+              </li>
+            ),
+          )}
         </ul>
       </div>
       <button
@@ -485,6 +495,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   });
   const bpmLookup = useOnlineLookup(api.lookupBpm);
   const genreLookup = useOnlineLookup(api.lookupGenres);
+  const youtubeLinkLookup = useOnlineLookup(api.lookupYoutube);
   const saveSong = useSaveSong();
   const deleteSong = useDeleteSong();
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -496,6 +507,13 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
     if (focusFirstError === 0) return;
     bodyRef.current?.querySelector<HTMLElement>('.field-invalid input, .field-invalid textarea')?.focus();
   }, [focusFirstError]);
+
+  // Ein automatisch eingetragener YouTube-Link kann schon an einem anderen Song hängen (Dublette).
+  const autoYoutubeUrl = form.autoYoutube?.url ?? null;
+  useEffect(() => {
+    if (autoYoutubeUrl !== null && form.youtubeUrl === autoYoutubeUrl) checkDuplicate(form);
+    // Nur prüfen, wenn ein neuer Link eingetragen wurde.
+  }, [autoYoutubeUrl]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -565,6 +583,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
           setSearchKey((key) => key + 1);
           bpmLookup.reset();
           genreLookup.reset();
+          youtubeLinkLookup.reset();
           setDuplicate(null);
           setIgnoredDuplicates([]);
           setQuick(false);
@@ -651,10 +670,46 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
     }
   }
 
-  /** Tempo und Genres online nachschlagen, sobald Titel und Interpret feststehen. */
+  /**
+   * Sucht einen YouTube-Link bei Wikidata und MusicBrainz (ohne Konto), sobald Titel und Interpret
+   * feststehen. Gefüllt wird nur ein leeres Feld; ein selbst eingetragener Link wird nie ersetzt,
+   * einer, den eine Suche für einen anderen Song eingetragen hat, schon.
+   */
+  function lookUpYoutubeLink(next: FormState, force = false) {
+    const title = next.title.trim();
+    const artist = next.artist.trim();
+    if (!title || !artist) return;
+    const song = { title, artist };
+    const auto = next.autoYoutube !== null && next.youtubeUrl === next.autoYoutube.url ? next.autoYoutube : null;
+    if (next.youtubeUrl.trim() !== '' && !auto) return;
+    // Ein eingefügter oder schon gefundener Link zu genau diesem Song bleibt.
+    if (!force && auto?.song && sameSong(auto.song, song)) return;
+
+    const duration = parseDuration(next.duration);
+    const started = youtubeLinkLookup.search(
+      { title, artist, durationSeconds: duration.ok ? duration.seconds : null },
+      (match) =>
+        setForm((current) =>
+          current.youtubeUrl.trim() === '' ? { ...current, youtubeUrl: match.url, autoYoutube: { url: match.url, song } } : current,
+        ),
+      force,
+    );
+    if (started && auto) {
+      setForm((current) =>
+        current.autoYoutube &&
+        current.youtubeUrl === current.autoYoutube.url &&
+        !(current.autoYoutube.song && sameSong(current.autoYoutube.song, song))
+          ? { ...current, youtubeUrl: '', autoYoutube: null }
+          : current,
+      );
+    }
+  }
+
+  /** Tempo, Genres und YouTube-Link online nachschlagen, sobald Titel und Interpret feststehen. */
   function lookUpOnline(next: FormState) {
     lookUpBpm(next);
     lookUpGenres(next);
+    lookUpYoutubeLink(next);
   }
 
   const canSearchBpm = form.bpm.trim() === '' && form.title.trim() !== '' && form.artist.trim() !== '';
@@ -738,6 +793,43 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
       {genreStatus && <> · {genreStatus}</>}
     </>
   );
+
+  // Herkunft eines automatisch gefundenen YouTube-Links, sonst der Stand der Suche.
+  const youtubeMatch = youtubeLinkLookup.state.status === 'found' ? youtubeLinkLookup.state.match : null;
+  const canSearchYoutubeLink = form.youtubeUrl.trim() === '' && form.title.trim() !== '' && form.artist.trim() !== '';
+  let youtubeHint: ReactNode = undefined;
+  if (youtubeLinkLookup.state.status === 'searching') {
+    youtubeHint = <span role="status">Suche bei Wikidata und MusicBrainz …</span>;
+  } else if (youtubeMatch && form.youtubeUrl === youtubeMatch.url) {
+    youtubeHint = (
+      <span role="status">
+        Gefunden über{' '}
+        <a href={youtubeMatch.sourceUrl} target="_blank" rel="noopener noreferrer">
+          {YOUTUBE_LINK_SOURCES[youtubeMatch.source]}
+        </a>
+        {' · '}
+        <a
+          href={youtubeMatch.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={youtubeMatch.channel ? `${youtubeMatch.videoTitle} – ${youtubeMatch.channel}` : youtubeMatch.videoTitle}
+        >
+          Video ansehen
+        </a>
+      </span>
+    );
+  } else if (canSearchYoutubeLink && youtubeLinkLookup.state.status === 'notFound') {
+    youtubeHint = <span role="status">Bei Wikidata und MusicBrainz kein Video gefunden.</span>;
+  } else if (canSearchYoutubeLink && youtubeLinkLookup.state.status === 'error') {
+    youtubeHint = (
+      <span role="alert">
+        Wikidata und MusicBrainz nicht erreichbar.{' '}
+        <button type="button" className="link-button" onClick={() => lookUpYoutubeLink(form, true)}>
+          Nochmal versuchen
+        </button>
+      </span>
+    );
+  }
 
   // Mit verbundenem YouTube-Konto sucht der Knopf neben dem YouTube-Feld direkt in der App.
   const youtubeReady = Boolean(youtubeStatus.data?.configured && youtubeStatus.data.connected && !youtubeStatus.data.expired);
@@ -938,7 +1030,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
         hint={
           youtubeLinkWithoutVideo
             ? 'Das sieht nicht nach dem Link zu einem einzelnen Video aus – für YouTube-Playlists wird ein Video-Link gebraucht.'
-            : undefined
+            : youtubeHint
         }
         onChange={(value) => set('youtubeUrl', value)}
         onBlur={() => checkDuplicate(form)}
@@ -1145,6 +1237,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
                 form={form}
                 bpmSearching={bpmLookup.state.status === 'searching'}
                 genresSearching={genreLookup.state.status === 'searching'}
+                youtubeSearching={youtubeLinkLookup.state.status === 'searching'}
                 detailsOpen={detailsVisible}
                 onToggleDetails={() => setDetailsOpen(!detailsVisible)}
               />

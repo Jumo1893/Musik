@@ -17,8 +17,10 @@ import type {
   CategoryInput,
   GeneratorCriteria,
   GeneratorResult,
+  LibraryJob,
   LinkLookupResult,
   LookupResult,
+  YoutubeLinkMatch,
   Playlist,
   PlaylistInput,
   Song,
@@ -183,6 +185,17 @@ export const api = {
   /** Tempo auf songbpm.com; match ist null, wenn der Song dort unbekannt ist. */
   lookupBpm: (song: SongLookupQuery, signal?: AbortSignal) =>
     request<{ match: BpmMatch | null }>('GET', `/lookup/bpm?${songLookupParams(song)}`, undefined, signal),
+  /** YouTube-Link über Wikidata und MusicBrainz; match ist null, wenn keine Quelle ein passendes Video kennt. */
+  lookupYoutube: (song: SongLookupQuery, signal?: AbortSignal) =>
+    request<{ match: YoutubeLinkMatch | null }>('GET', `/lookup/youtube?${songLookupParams(song)}`, undefined, signal),
+  /** Aufträge über die ganze Bibliothek im Hintergrund */
+  jobs: {
+    start: <T>(kind: LibraryJob['kind']) => request<LibraryJob<T>>('POST', '/jobs', { kind }),
+    get: <T>(id: string) => request<LibraryJob<T>>('GET', `/jobs/${encodeURIComponent(id)}`),
+    latest: <T>(kind: LibraryJob['kind']) => request<{ job: LibraryJob<T> | null }>('GET', `/jobs/latest?kind=${kind}`),
+    /** Hält einen laufenden Auftrag an bzw. vergisst einen beendeten. */
+    remove: (id: string) => request<void>('DELETE', `/jobs/${encodeURIComponent(id)}`),
+  },
   /** Genres auf MusicBrainz; match ist null, wenn MusicBrainz den Song nicht kennt. */
   lookupGenres: (song: SongLookupQuery, signal?: AbortSignal) =>
     request<{ match: GenreMatch | null }>('GET', `/lookup/genres?${songLookupParams(song)}`, undefined, signal),

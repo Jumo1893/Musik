@@ -17,9 +17,11 @@ import { config } from './config.ts';
 import { createPool, type Pool } from './db.ts';
 import { MIGRATIONS_DIR, migrate } from './migrate.ts';
 import { GenreLookupService } from './services/genreLookup.ts';
+import { LibraryJobs } from './services/libraryJobs.ts';
 import { LinkLookupService } from './services/linkLookup.ts';
 import { SongBpmService } from './services/songBpm.ts';
 import { YoutubeService } from './services/youtube.ts';
+import { YoutubeLinkService } from './services/youtubeLinks.ts';
 import { FakeGoogle } from './testing/fakeGoogle.ts';
 
 const adminConfig = { ...config.db, database: 'postgres' };
@@ -134,6 +136,31 @@ describe('API', { skip: unavailable ?? false }, () => {
       return Response.json({ results: [hurt] });
     }) as typeof fetch,
   });
+  /** Nachgebautes Wikidata und oEmbed: Wikidata kennt das Video zu „Never Gonna Give You Up“. */
+  const youtubeLinks = new YoutubeLinkService({
+    genreLookup,
+    fetchFn: (async (input: unknown) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'query.wikidata.org') {
+        const known = (url.searchParams.get('query') ?? '').includes('"Never Gonna Give You Up"@en');
+        return Response.json({
+          results: {
+            bindings: known
+              ? [
+                  {
+                    item: { value: 'http://www.wikidata.org/entity/Q193185' },
+                    video: { value: 'dQw4w9WgXcQ' },
+                    performerLabel: { value: 'Rick Astley' },
+                  },
+                ]
+              : [],
+          },
+        });
+      }
+      return Response.json({ title: 'Rick Astley - Never Gonna Give You Up (Official Video)', author_name: 'Rick Astley' });
+    }) as typeof fetch,
+  });
+  const jobs = new LibraryJobs();
   const REDIRECT_URI = 'http://localhost:8090/api/youtube/callback';
 
   // Kategorien, die vor jedem Test frisch angelegt werden (IDs 1 bis 3).
@@ -180,6 +207,8 @@ describe('API', { skip: unavailable ?? false }, () => {
       songBpm,
       genreLookup,
       linkLookup,
+      youtubeLinks,
+      jobs,
       allowedHosts: ['localhost', '127.0.0.1', '[::1]'],
     });
     server = app.listen(0, '127.0.0.1');
@@ -198,6 +227,7 @@ describe('API', { skip: unavailable ?? false }, () => {
     // Nachträge im Hintergrund dürfen nicht in den nächsten Test hineinlaufen.
     await songBpm.idle();
     await genreLookup.idle();
+    await jobs.idle();
     bpmSearches.length = 0;
     genreSearches.length = 0;
     await pool.query(
@@ -846,6 +876,36 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(response.status, 400);
       assert.equal(response.body.fields.term, 'Bitte einen Suchbegriff angeben.');
       assert.equal((await api('GET', '/api/lookup/itunes?term=a')).status, 400);
+    });
+
+    test('findet YouTube-Links ohne Konto, im Dialog und für die ganze Bibliothek', async () => {
+      const found = await api('GET', '/api/lookup/youtube?title=Never%20Gonna%20Give%20You%20Up&artist=Rick%20Astley');
+      assert.equal(found.status, 200);
+      assert.equal(found.body.match.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+      assert.equal(found.body.match.source, 'wikidata');
+      assert.deepEqual((await api('GET', '/api/lookup/youtube?title=Unbekannt&artist=Niemand')).body, { match: null });
+
+      const rick = await createSong({ title: 'Never Gonna Give You Up', artist: 'Rick Astley' });
+      await createSong({ title: 'Unbekannt', artist: 'Niemand' });
+      await createSong({ title: 'Hat schon', artist: 'x', youtubeUrl: 'https://youtu.be/8AHCfZTRGiI' });
+
+      const started = await api('POST', '/api/jobs', { kind: 'youtube-links' });
+      assert.equal(started.status, 202);
+      assert.equal(started.body.total, 2, 'Songs mit Link werden übersprungen');
+      await jobs.idle();
+      const job = await api('GET', `/api/jobs/${started.body.id}`);
+      assert.equal(job.body.status, 'done');
+      assert.deepEqual(
+        job.body.results.map((result: Json) => [result.songId, result.videoId]),
+        [[rick.id, 'dQw4w9WgXcQ']],
+      );
+      assert.equal((await api('GET', '/api/jobs/latest?kind=youtube-links')).body.job.id, started.body.id);
+      // Gespeichert wird erst nach Bestätigung.
+      assert.equal((await api('GET', `/api/songs/${rick.id}`)).body.youtubeUrl, null);
+
+      assert.equal((await api('DELETE', `/api/jobs/${started.body.id}`)).status, 204);
+      assert.equal((await api('GET', `/api/jobs/${started.body.id}`)).status, 404);
+      assert.equal((await api('POST', '/api/jobs', { kind: 'gibt-es-nicht' })).status, 400);
     });
 
     test('erkennt einen Song an seinem Link', async () => {

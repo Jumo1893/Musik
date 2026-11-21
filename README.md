@@ -11,14 +11,14 @@ Gespeichert werden nur Angaben und Links zu den Songs – **keine Audiodateien**
   Die Online-Suche holt die Angaben samt Cover und Apple-Music-Link aus dem iTunes-Katalog, sodass meist nur noch Kategorien und Bewertung fehlen.
   Tempo (BPM) und Genres schlägt der Song-Dialog automatisch nach, sobald Titel und Interpret feststehen: das Tempo auf [songbpm.com](https://songbpm.com), die Genres auf [MusicBrainz](https://musicbrainz.org). Übernommen wird nur ein Treffer, bei dem Titel und Interpret passen, und nur in leere Felder – selbst eingetragene Werte bleiben. Weitere Genres von MusicBrainz stehen als Vorschläge unter dem Feld. Bei Songs aus einem YouTube-Import werden Tempo und Genres im Hintergrund nachgetragen.
 - **Kategorien** wie „melancholisch“ oder „aufpushend“: frei anlegbar, farbig, beliebig viele pro Song. 20 Kategorien sind als Startpunkt angelegt – Stimmungen wie „verträumt“ oder „episch“ und Anlässe wie „Sport“, „Roadtrip“ oder „Einschlafen“.
-- **Links zu Apple Music, YouTube und YouTube Music** an jedem Song. Ist ein Link gespeichert, führt der Knopf direkt zum Song, sonst zur Suche auf der Plattform. Ein YouTube-Link genügt auch für YouTube Music.
+- **Links zu Apple Music, YouTube und YouTube Music** an jedem Song. Ist ein Link gespeichert, führt der Knopf direkt zum Song, sonst zur Suche auf der Plattform. Ein YouTube-Link genügt auch für YouTube Music. Den YouTube-Link sucht der Song-Dialog selbst bei [Wikidata](https://www.wikidata.org) und MusicBrainz, ohne YouTube-Konto; für vorhandene Songs gibt es auf der Seite „YouTube“ die Aktion „Fehlende YouTube-Links ergänzen“.
 - **Auswertung**: Kennzahlen und Diagramme zu Kategorien, Interpreten, Genres, Jahrzehnten, Songlänge, Bewertung, Energie und Mitsingen, häufige Kategorie-Kombinationen und ein Überblick, wo noch Angaben fehlen.
 - **Playlists**: Der Generator stellt aus gewünschten und ausgeschlossenen Kategorien, Ziel-Dauer, Energie, Mitsingen, Bewertung, Jahr und Genre einen Vorschlag zusammen – wahlweise gemischt, aufbauend, ausklingend oder als Bogen. Vorschläge lassen sich neu mischen, einzelne Songs austauschen, gespeicherte Playlists von Hand umsortieren und ergänzen.
 - **Mitnehmen**: Playlist auf YouTube als Wiedergabeliste öffnen, als Textliste kopieren oder als CSV exportieren (auch die ganze Songliste).
 - **YouTube-Konto** (optional, siehe [YouTube verbinden](#youtube-verbinden)):
   - Playlists der App im eigenen YouTube-Konto anlegen und später abgleichen. Sie erscheinen auch in YouTube Music.
   - Eigene YouTube-Playlists und „Mag ich“-Videos als Songs übernehmen; vorhandene Songs werden erkannt und verknüpft.
-  - Für Songs ohne YouTube-Link passende Videos suchen und gesammelt prüfen.
+  - Für Songs ohne YouTube-Link zusätzlich die YouTube-Suche fragen und die Treffer gesammelt prüfen (ohne Konto suchen Wikidata und MusicBrainz).
 
 ## Starten
 
@@ -249,6 +249,8 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 | `GET /api/lookup/link?url=…` | Song an seinem Link erkennen: Apple Music über die Track-ID, YouTube und YouTube Music über Titel und Kanal des Videos samt Katalogsuche |
 | `GET /api/lookup/bpm?title=…&artist=…&duration=…` | Tempo auf songbpm.com (`{ "match": null }`, wenn unbekannt) |
 | `GET /api/lookup/genres?title=…&artist=…&duration=…` | Genres auf MusicBrainz (`{ "match": null }`, wenn unbekannt) |
+| `GET /api/lookup/youtube?title=…&artist=…&duration=…` | YouTube-Link über Wikidata und MusicBrainz, geprüft über oEmbed (`{ "match": null }`, wenn unbekannt) |
+| `POST /api/jobs` · `GET /api/jobs/latest?kind=…` · `GET`, `DELETE /api/jobs/:id` | Aufträge über die ganze Bibliothek im Hintergrund (`youtube-links`: fehlende YouTube-Links suchen); DELETE hält einen laufenden an bzw. vergisst einen fertigen |
 | `GET /api/genres` | Haupt- und Untergenres der Genre-Liste samt eigenen Genres der Bibliothek; `featuredIn` nennt die Hauptgenres, in deren kurzer Liste ein Untergenre steht |
 | `GET /api/youtube/status` | Verbindung und Kontingent |
 | `GET /api/youtube/connect` · `GET /api/youtube/callback` | Anmeldung bei Google (im Browser) |
@@ -265,6 +267,7 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 - Ein ins Suchfeld eingefügter Link geht je nach Plattform weiter: Bei Apple Music fragt das Backend die Track-ID bei der iTunes Search API ab, bei YouTube und YouTube Music schickt es den Link zum Video an die oEmbed-Schnittstelle von YouTube (liefert Titel und Kanal, ohne Konto und ohne Kontingent) und sucht danach mit Interpret und Titel im iTunes-Katalog.
 - Für die Genres schickt das Backend Interpret und Titel an die Suche von MusicBrainz (öffentliche Web-API ohne Schlüssel, höchstens eine Anfrage pro Sekunde) – beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs.
 - Für das Tempo schickt das Backend Interpret und Titel an die Suche von songbpm.com – ebenfalls beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs. songbpm.com hat keine offizielle Schnittstelle; ausgewertet wird die Ergebnisseite. Ändert die Seite ihren Aufbau, findet die App kein Tempo mehr, alles andere funktioniert weiter.
+- Für YouTube-Links ohne Konto schickt das Backend den Titel des Songs an den SPARQL-Dienst von Wikidata (Eigenschaft „YouTube-Video-ID“) und fragt bei MusicBrainz die Links der gefundenen Aufnahme ab (nur deren ID). Jedes gefundene Video prüft es über die oEmbed-Schnittstelle von YouTube, gelöschte und private Videos werden übersprungen. Das passiert im Song-Dialog und bei „Fehlende YouTube-Links ergänzen“.
 - Cover werden beim Anzeigen direkt von der gespeicherten Bildadresse geladen (bei Treffern aus der Online-Suche von Apple, bei übernommenen Videos von YouTube).
 - Ein Klick auf einen Plattform-Link öffnet die jeweilige Seite in einem neuen Tab.
 - Mit verbundenem YouTube-Konto spricht das Backend mit Google: Anmeldung, Lesen der eigenen Playlists, Suchen von Videos (Interpret und Titel des Songs) und Anlegen bzw. Ändern der übertragenen Playlists. Die Zugangsdaten liegen in der eigenen Datenbank und verlassen den Rechner nur in Richtung Google.

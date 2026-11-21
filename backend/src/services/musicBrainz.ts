@@ -51,6 +51,11 @@ const recordingSchema = z.object({
 });
 
 const releaseGroupSchema = z.object({ id: z.string(), title: z.string().nullish(), tags: z.array(tagSchema).nullish() });
+const relationsSchema = z.object({
+  relations: z
+    .array(z.object({ type: z.string().nullish(), url: z.object({ resource: z.string() }).nullish() }))
+    .nullish(),
+});
 const artistSchema = z.object({ id: z.string(), name: z.string(), tags: z.array(tagSchema).nullish() });
 
 export type MbTag = z.infer<typeof tagSchema>;
@@ -114,12 +119,28 @@ export class MusicBrainzClient {
     return parse(z.object({ artists: z.array(artistSchema) }), body).artists;
   }
 
+  /** Links einer Aufnahme zum kostenlosen Anhören („free streaming“, „streaming“), etwa bei YouTube. */
+  async recordingStreamingUrls(id: string): Promise<string[]> {
+    if (!MBID.test(id)) return [];
+    const url = new URL(`/ws/2/recording/${id}`, this.#baseUrl);
+    url.searchParams.set('inc', 'url-rels');
+    url.searchParams.set('fmt', 'json');
+    const { relations } = parse(relationsSchema, await this.#request(url, 'recording'));
+    return (relations ?? [])
+      .filter((relation) => relation.type === 'free streaming' || relation.type === 'streaming')
+      .map((relation) => relation.url?.resource)
+      .filter((resource) => typeof resource === 'string');
+  }
+
   async #get(entity: string, query: string, limit: number): Promise<unknown> {
     const url = new URL(`/ws/2/${entity}`, this.#baseUrl);
     url.searchParams.set('query', query);
     url.searchParams.set('limit', String(limit));
     url.searchParams.set('fmt', 'json');
+    return this.#request(url, entity);
+  }
 
+  async #request(url: URL, entity: string): Promise<unknown> {
     for (let attempt = 0; ; attempt++) {
       await this.#waitForSlot();
       let response: Response;

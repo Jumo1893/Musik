@@ -127,6 +127,35 @@ export type LinkLookupResult =
       results: LookupResult[];
     };
 
+/** YouTube-Video zu einem Song, gefunden ohne Konto und ohne Kontingent. */
+export interface YoutubeLinkMatch {
+  videoId: string;
+  url: string;
+  source: 'wikidata' | 'musicbrainz';
+  /** Eintrag bei der Quelle (Wikidata-Seite oder MusicBrainz-Aufnahme) */
+  sourceUrl: string;
+  videoTitle: string;
+  channel: string | null;
+  thumbnailUrl: string | null;
+}
+
+export interface YoutubeLinkFinding extends YoutubeLinkMatch {
+  songId: number;
+}
+
+/** Auftrag, der die Bibliothek im Hintergrund durchgeht. */
+export interface LibraryJob<T = unknown> {
+  id: string;
+  kind: 'youtube-links';
+  status: 'running' | 'done' | 'failed' | 'cancelled';
+  done: number;
+  total: number;
+  results: T[];
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
 /** Eintrag der Genre-Liste: Hauptgenre wie Rock oder Untergenre wie Alternative Rock. */
 export interface GenreInfo {
   name: string;

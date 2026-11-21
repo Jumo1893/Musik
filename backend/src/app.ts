@@ -3,15 +3,18 @@ import type { Pool } from './db.ts';
 import { errorHandler } from './errors.ts';
 import { categoriesRouter } from './routes/categories.ts';
 import { genresRouter } from './routes/genres.ts';
+import { jobsRouter } from './routes/jobs.ts';
 import { lookupRouter } from './routes/lookup.ts';
 import { playlistsRouter } from './routes/playlists.ts';
 import { songsRouter } from './routes/songs.ts';
 import { statsRouter } from './routes/stats.ts';
 import { youtubeRouter } from './routes/youtube.ts';
 import type { GenreLookupService } from './services/genreLookup.ts';
+import type { LibraryJobs } from './services/libraryJobs.ts';
 import type { LinkLookupService } from './services/linkLookup.ts';
 import type { SongBpmService } from './services/songBpm.ts';
 import type { YoutubeService } from './services/youtube.ts';
+import type { YoutubeLinkService } from './services/youtubeLinks.ts';
 
 export interface AppOptions {
   itunesCountry: string;
@@ -22,6 +25,10 @@ export interface AppOptions {
   genreLookup: GenreLookupService;
   /** Songs an ihrem Link erkennen (Apple Music, YouTube) */
   linkLookup: LinkLookupService;
+  /** YouTube-Links ohne Konto finden (Wikidata, MusicBrainz) */
+  youtubeLinks: YoutubeLinkService;
+  /** Aufträge über die ganze Bibliothek im Hintergrund */
+  jobs: LibraryJobs;
   /** Erlaubte Host-Namen; null: keine Prüfung */
   allowedHosts: readonly string[] | null;
 }
@@ -65,6 +72,7 @@ export function createApp(pool: Pool, options: AppOptions): Express {
   app.use('/api/playlists', playlistsRouter(pool, options.youtube));
   app.use('/api/stats', statsRouter(pool));
   app.use('/api/lookup', lookupRouter(pool, options));
+  app.use('/api/jobs', jobsRouter(pool, options));
   app.use('/api/youtube', youtubeRouter(pool, options));
 
   app.use((_req, res) => {
