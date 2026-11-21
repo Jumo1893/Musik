@@ -331,14 +331,22 @@ describe('API', { skip: unavailable ?? false }, () => {
     });
 
     test('lehnt denselben Song ein zweites Mal ab, andere Alben sind erlaubt', async () => {
-      await createSong({ title: 'Hurt', artist: 'Johnny Cash', album: 'American IV' });
+      const original = await createSong({ title: 'Hurt', artist: 'Johnny Cash', album: 'American IV' });
 
       const duplicate = await api('POST', '/api/songs', { title: 'HURT', artist: 'johnny cash', album: 'american iv' });
       assert.equal(duplicate.status, 409);
-      assert.match(duplicate.body.error, /gibt es schon/);
+      assert.equal(duplicate.body.error, '„Hurt“ von Johnny Cash vom Album „American IV“ gibt es schon in deiner Bibliothek.');
+      assert.equal(duplicate.body.code, 'song_exists');
+      assert.equal(duplicate.body.existingSongId, original.id);
 
-      await createSong({ title: 'Hurt', artist: 'Johnny Cash', album: 'Live' });
+      const live = await createSong({ title: 'Hurt', artist: 'Johnny Cash', album: 'Live' });
       await createSong({ title: 'Hurt', artist: 'Nine Inch Nails', album: 'American IV' });
+
+      // Auch beim Ändern nennt die Meldung den vorhandenen Song – den geänderten selbst nie.
+      const renamed = await api('PUT', `/api/songs/${live.id}`, { title: 'Hurt', artist: 'Johnny Cash', album: 'American IV' });
+      assert.equal(renamed.status, 409);
+      assert.equal(renamed.body.existingSongId, original.id);
+      assert.equal((await api('PUT', `/api/songs/${live.id}`, { title: 'Hurt', artist: 'Johnny Cash', album: 'LIVE' })).status, 200);
     });
 
     test('lehnt unbekannte Kategorien ab und legt dann nichts an', async () => {

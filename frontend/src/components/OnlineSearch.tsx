@@ -3,19 +3,22 @@ import { useMutation } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api, errorMessage } from '../api.ts';
 import { formatDuration } from '../lib/format.ts';
+import type { Duplicate } from '../lib/songMatching.ts';
 import type { LookupResult } from '../types.ts';
 import { Artwork } from './ui.tsx';
 
 interface OnlineSearchProps {
   onPick: (result: LookupResult) => void;
   autoFocus?: boolean;
+  /** Findet den passenden Song der Bibliothek, falls der Treffer schon drin ist. */
+  findDuplicate?: (result: LookupResult) => Duplicate | null;
 }
 
 /**
  * Sucht einen Song im iTunes-Katalog und übergibt den gewählten Treffer, damit das
  * Formular vorbelegt werden kann. Gesendet wird nur der eingetippte Suchbegriff.
  */
-export function OnlineSearch({ onPick, autoFocus }: OnlineSearchProps) {
+export function OnlineSearch({ onPick, autoFocus, findDuplicate }: OnlineSearchProps) {
   const [term, setTerm] = useState('');
   const [picked, setPicked] = useState<LookupResult | null>(null);
   const search = useMutation({ mutationFn: (text: string) => api.lookup(text) });
@@ -89,20 +92,31 @@ export function OnlineSearch({ onPick, autoFocus }: OnlineSearchProps) {
           </p>
         ) : (
           <ul className="lookup-results" aria-label="Treffer">
-            {search.data.map((result, index) => (
-              <li key={`${result.appleMusicUrl ?? ''}-${index}`}>
-                <button type="button" className="lookup-result" onClick={() => pick(result)}>
-                  <Artwork url={result.artworkUrl} size={44} />
-                  <span className="lookup-text">
-                    <span className="lookup-title">{result.title}</span>
-                    <span className="lookup-meta">
-                      {[result.artist, result.album, result.releaseYear].filter(Boolean).join(' · ')}
+            {search.data.map((result, index) => {
+              const duplicate = findDuplicate?.(result) ?? null;
+              return (
+                <li key={`${result.appleMusicUrl ?? ''}-${index}`}>
+                  <button type="button" className="lookup-result" onClick={() => pick(result)}>
+                    <Artwork url={result.artworkUrl} size={44} />
+                    <span className="lookup-text">
+                      <span className="lookup-title">{result.title}</span>
+                      <span className="lookup-meta">
+                        {[result.artist, result.album, result.releaseYear].filter(Boolean).join(' · ')}
+                      </span>
+                      {duplicate && (
+                        <span
+                          className="lookup-badge"
+                          title={`In der Bibliothek: „${duplicate.song.title}“ von ${duplicate.song.artist}${duplicate.song.album ? ` (${duplicate.song.album})` : ''}`}
+                        >
+                          Schon in deiner Bibliothek
+                        </span>
+                      )}
                     </span>
-                  </span>
-                  <span className="lookup-duration">{formatDuration(result.durationSeconds)}</span>
-                </button>
-              </li>
-            ))}
+                    <span className="lookup-duration">{formatDuration(result.durationSeconds)}</span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         ))}
     </section>

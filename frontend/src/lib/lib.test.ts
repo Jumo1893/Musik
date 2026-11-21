@@ -11,7 +11,8 @@ import {
   type GenreTreeMainRow,
   type GenreTreeOptions,
 } from './genres.ts';
-import { extractYoutubeId, searchUrl, streamingLinks, youtubeQueueUrl, YOUTUBE_QUEUE_LIMIT } from './links.ts';
+import { extractAppleTrackId, extractYoutubeId, searchUrl, streamingLinks, youtubeQueueUrl, YOUTUBE_QUEUE_LIMIT } from './links.ts';
+import { duplicateFinder } from './songMatching.ts';
 import {
   addGenre,
   distinctGenres,
@@ -560,5 +561,51 @@ describe('Genre-Auswahl als Baum', () => {
       sub('Polka', null, true),
       sub('Schrammelmusik', null),
     ]);
+  });
+});
+
+describe('Dubletten', () => {
+  const hurt = song({
+    title: 'Hurt',
+    artist: 'Johnny Cash',
+    album: 'American IV',
+    appleMusicUrl: 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605',
+    youtubeUrl: 'https://www.youtube.com/watch?v=8AHCfZTRGiI',
+  });
+  const live = song({ title: 'Hurt (Live)', artist: 'Johnny Cash', album: 'Live' });
+  const find = duplicateFinder([hurt, live]);
+
+  test('Apple-Music-Links nennen ihre Track-ID, Alben und Playlists nicht', () => {
+    expect(extractAppleTrackId('https://music.apple.com/de/album/hurt/1440811595?i=1440811605')).toBe('1440811605');
+    expect(extractAppleTrackId('https://music.apple.com/de/song/hurt/1440811605')).toBe('1440811605');
+    expect(extractAppleTrackId('https://music.apple.com/us/song/1440811605')).toBe('1440811605');
+    expect(extractAppleTrackId('https://music.apple.com/de/album/american-iv/1440811595')).toBeNull();
+    expect(extractAppleTrackId('https://music.apple.com/de/playlist/x/pl.u-abc')).toBeNull();
+    expect(extractAppleTrackId('https://example.org/song/x/123')).toBeNull();
+  });
+
+  test('derselbe Song von einem anderen Album oder mit Zusätzen ist eine Dublette', () => {
+    expect(find({ title: 'Hurt', artist: 'Johnny Cash' })).toEqual({ song: hurt, reason: 'title' });
+    expect(find({ title: 'Hurt (Remastered)', artist: 'johnny cash' })?.song).toBe(hurt);
+    expect(find({ title: 'Hurt', artist: 'Johnny Cash feat. June Carter' })?.song).toBe(hurt);
+  });
+
+  test('eine Live-Fassung zählt nur, wenn die vorhandene auch eine ist', () => {
+    expect(find({ title: 'Hurt - Live', artist: 'Johnny Cash' })?.song).toBe(live);
+    expect(find({ title: 'Hurt (Remix)', artist: 'Johnny Cash' })).toBeNull();
+    expect(find({ title: 'Hurt', artist: 'Nine Inch Nails' })).toBeNull();
+  });
+
+  test('ein schon gespeicherter Link ist immer eine Dublette', () => {
+    expect(find({ title: 'Irgendwas', artist: 'Jemand', youtubeUrl: 'https://youtu.be/8AHCfZTRGiI?t=30' })).toEqual({
+      song: hurt,
+      reason: 'link',
+    });
+    expect(find({ title: '', artist: '', appleMusicUrl: 'https://music.apple.com/de/song/hurt/1440811605' })?.song).toBe(hurt);
+  });
+
+  test('der bearbeitete Song ist nicht seine eigene Dublette', () => {
+    const whileEditing = duplicateFinder([hurt, live], hurt.id);
+    expect(whileEditing({ title: 'Hurt', artist: 'Johnny Cash', youtubeUrl: hurt.youtubeUrl })).toBeNull();
   });
 });

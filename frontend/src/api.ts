@@ -31,14 +31,30 @@ export class ApiError extends Error {
   readonly fields: Record<string, string>;
   /** Grund für die Oberfläche, z. B. „youtube_reconnect“ */
   readonly code: string | null;
+  /** Weitere Angaben der Antwort, z. B. existingSongId bei einer Dublette */
+  readonly details: Record<string, unknown>;
 
-  constructor(status: number, message: string, fields: Record<string, string> = {}, code: string | null = null) {
+  constructor(
+    status: number,
+    message: string,
+    fields: Record<string, string> = {},
+    code: string | null = null,
+    details: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.fields = fields;
     this.code = code;
+    this.details = details;
   }
+}
+
+/** ID des vorhandenen Songs, wenn das Speichern an einer Dublette gescheitert ist. */
+export function existingSongIdOf(error: unknown): number | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const id = error.details.existingSongId;
+  return typeof id === 'number' && Number.isInteger(id) ? id : null;
 }
 
 /** Fehlermeldung für die Anzeige, egal was geworfen wurde. */
@@ -77,22 +93,22 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
 
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const info = (typeof data === 'object' && data !== null ? data : {}) as {
-      error?: unknown;
-      fields?: unknown;
-      code?: unknown;
-    };
+    const { error, fields, code, ...details } = (typeof data === 'object' && data !== null ? data : {}) as Record<
+      string,
+      unknown
+    >;
     const message =
-      typeof info.error === 'string'
-        ? info.error
+      typeof error === 'string'
+        ? error
         : response.status >= 502 && response.status <= 504
           ? 'Die API ist gerade nicht erreichbar. Bitte gleich noch einmal versuchen.'
           : `Unerwartete Antwort des Servers (${response.status}).`;
     throw new ApiError(
       response.status,
       message,
-      isStringRecord(info.fields) ? info.fields : {},
-      typeof info.code === 'string' ? info.code : null,
+      isStringRecord(fields) ? fields : {},
+      typeof code === 'string' ? code : null,
+      details,
     );
   }
   return data as T;

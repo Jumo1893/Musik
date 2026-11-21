@@ -48,6 +48,26 @@ export function extractYoutubeId(link: string | null | undefined): string | null
   return candidate !== null && YOUTUBE_ID.test(candidate) ? candidate : null;
 }
 
+const APPLE_HOSTS = new Set(['music.apple.com', 'geo.music.apple.com', 'itunes.apple.com']);
+
+/**
+ * Liest die Track-ID aus einem Apple-Music-Link: „…/album/hurt/1440811595?i=1440811605“ oder
+ * „…/song/hurt/1440811605“. Ein Album- oder Playlist-Link ohne einzelnen Song ergibt null.
+ */
+export function extractAppleTrackId(link: string | null | undefined): string | null {
+  if (!link) return null;
+  let url: URL;
+  try {
+    url = new URL(link.trim());
+  } catch {
+    return null;
+  }
+  if (!APPLE_HOSTS.has(url.hostname.toLowerCase())) return null;
+  const track = url.searchParams.get('i');
+  if (track !== null) return /^\d{1,15}$/.test(track) ? track : null;
+  return /\/song\/(?:[^/]+\/)?(\d{1,15})\/?$/.exec(url.pathname)?.[1] ?? null;
+}
+
 /** Video-ID eines Songs, egal in welchem der beiden YouTube-Felder der Link steht. */
 export function youtubeIdOf(song: Pick<Song, 'youtubeUrl' | 'youtubeMusicUrl'>): string | null {
   return extractYoutubeId(song.youtubeUrl) ?? extractYoutubeId(song.youtubeMusicUrl);

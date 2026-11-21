@@ -1737,6 +1737,46 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+.lookup-badge {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Hinweis auf einen Song, den es schon gibt */
+.duplicate-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.duplicate-note > svg {
+  flex: none;
+  color: var(--accent-text);
+}
+
+.duplicate-note p {
+  flex: 1 1 240px;
+  margin: 0;
+}
+
+.duplicate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .picker-list {
   display: flex;
   flex-direction: column;

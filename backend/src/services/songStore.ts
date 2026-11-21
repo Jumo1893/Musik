@@ -138,6 +138,25 @@ export async function updateSong(db: Queryable, id: number, input: SongInput): P
   return getSong(db, id);
 }
 
+/**
+ * Der Song, an dem ein Speichern mit diesen Angaben scheitern würde: gleicher Titel, Interpret
+ * und Album ohne Rücksicht auf Groß- und Kleinschreibung (wie der Index songs_unique_track).
+ */
+export async function findSameTrack(
+  db: Queryable,
+  track: Pick<SongInput, 'title' | 'artist' | 'album'>,
+  excludeId: number | null,
+): Promise<Pick<Song, 'id' | 'title' | 'artist' | 'album'> | null> {
+  const { rows } = await db.query<{ id: number; title: string; artist: string; album: string | null }>(
+    `SELECT id, title, artist, album FROM songs
+      WHERE lower(title) = lower($1) AND lower(artist) = lower($2) AND lower(coalesce(album, '')) = lower(coalesce($3, ''))
+        AND ($4::integer IS NULL OR id <> $4)
+      LIMIT 1`,
+    [track.title, track.artist, track.album, excludeId],
+  );
+  return rows[0] ?? null;
+}
+
 export async function deleteSong(db: Queryable, id: number): Promise<boolean> {
   const result = await db.query('DELETE FROM songs WHERE id = $1', [id]);
   return (result.rowCount ?? 0) > 0;

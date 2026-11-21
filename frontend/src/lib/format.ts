@@ -73,6 +73,14 @@ export function formatDate(iso: string): string {
   return Number.isNaN(date.getTime()) ? DASH : dateFormat.format(date);
 }
 
+const longDateFormat = new Intl.DateTimeFormat('de-DE', { dateStyle: 'long' });
+
+/** „3. Mai 2026“ */
+export function formatLongDate(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? DASH : longDateFormat.format(date);
+}
+
 /** Dezimalzahl mit Komma, z. B. 4.5 → „4,5“ */
 export function formatDecimal(value: number, digits = 1): string {
   return value.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });

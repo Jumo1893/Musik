@@ -1,10 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import { CopyCheck, Plus, Search, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, errorMessage } from '../api.ts';
-import { formatDuration, parseDuration } from '../lib/format.ts';
+import { api, ApiError, errorMessage, existingSongIdOf } from '../api.ts';
+import { formatDuration, formatLongDate, parseDuration } from '../lib/format.ts';
 import { extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform } from '../lib/links.ts';
 import { sameGenres, type GenreIndex } from '../lib/genres.ts';
+import { duplicateFinder, type Duplicate } from '../lib/songMatching.ts';
 import { addGenre, distinctGenres, genreKey } from '../lib/songs.ts';
 import { useCategories, useConfig, useDeleteSong, useGenreIndex, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
 import type { LookupResult, Song, SongInput } from '../types.ts';
@@ -183,15 +184,16 @@ interface LinkFieldProps {
   /** „Interpret Titel“ für die Suche auf der Plattform */
   query: string;
   error: string | undefined;
-  hint?: string | undefined;
+  hint?: ReactNode;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   /** Statt die Plattform im neuen Tab zu öffnen, direkt in der App suchen (YouTube mit Verbindung). */
   onSearch?: (() => void) | undefined;
   searching?: boolean;
 }
 
 /** Eingabefeld für einen Link samt Abkürzung zur Suche auf der Plattform (zum Kopieren des Links). */
-function LinkField({ platform, id, value, placeholder, query, error, hint, onChange, onSearch, searching }: LinkFieldProps) {
+function LinkField({ platform, id, value, placeholder, query, error, hint, onChange, onBlur, onSearch, searching }: LinkFieldProps) {
   const { name } = PLATFORMS[platform];
   const storefront = useConfig().data?.appleMusicStorefront;
   if (onSearch) {
@@ -206,6 +208,7 @@ function LinkField({ platform, id, value, placeholder, query, error, hint, onCha
             value={value}
             placeholder={placeholder}
             onChange={(event) => onChange(event.target.value)}
+            onBlur={onBlur}
           />
           <button
             type="button"
@@ -232,6 +235,7 @@ function LinkField({ platform, id, value, placeholder, query, error, hint, onCha
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
         />
         {query ? (
           <a
@@ -261,7 +265,48 @@ interface SongFormDialogProps {
   onClose: () => void;
 }
 
+/** Dialog zum Anlegen und Bearbeiten; „Vorhandenen Song öffnen“ wechselt darin zu einem anderen Song. */
 export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
+  const [current, setCurrent] = useState<Song | null>(song);
+  return <SongForm key={current?.id ?? 'neu'} song={current} onClose={onClose} onOpenSong={setCurrent} />;
+}
+
+interface SongFormProps extends SongFormDialogProps {
+  /** Wechselt den Dialog zu einem vorhandenen Song (etwa bei einer Dublette). */
+  onOpenSong: (song: Song) => void;
+}
+
+/** Hinweis auf einen Song, den es in der Bibliothek schon gibt. */
+function DuplicateNote({ duplicate, editing, onOpen, onIgnore }: { duplicate: Duplicate; editing: boolean; onOpen: () => void; onIgnore: () => void }) {
+  const { song } = duplicate;
+  const details = [song.album, `hinzugefügt am ${formatLongDate(song.createdAt)}`].filter(Boolean).join(', ');
+  return (
+    <div className="duplicate-note" role="status">
+      <CopyCheck size={18} aria-hidden />
+      <p>
+        {duplicate.reason === 'link' ? (
+          <>
+            Dieser Link gehört schon zu „{song.title}“ von {song.artist} ({details}).
+          </>
+        ) : (
+          <>
+            „{song.title}“ von {song.artist} hast du schon ({details}).
+          </>
+        )}
+      </p>
+      <div className="duplicate-actions">
+        <button type="button" className="button button-small" onClick={onOpen}>
+          Vorhandenen Song öffnen
+        </button>
+        <button type="button" className="button button-small" onClick={onIgnore}>
+          {editing ? 'Trotzdem speichern' : 'Trotzdem anlegen'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   const [form, setForm] = useState<FormState>(() => (song ? formFromSong(song) : EMPTY_FORM));
   const [errors, setErrors] = useState<Errors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -270,10 +315,17 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [focusFirstError, setFocusFirstError] = useState(0);
+  /** Song der Bibliothek, der zu den Angaben passt (Hinweis über dem Formular) */
+  const [duplicate, setDuplicate] = useState<Duplicate | null>(null);
+  /** Songs, bei denen „Trotzdem anlegen“ gewählt wurde – für sie erscheint kein Hinweis mehr. */
+  const [ignoredDuplicates, setIgnoredDuplicates] = useState<number[]>([]);
+  /** Vorhandener Song, an dem das Speichern gescheitert ist (HTTP 409) */
+  const [conflictSongId, setConflictSongId] = useState<number | null>(null);
 
   const categories = useCategories();
   const songs = useSongs();
   const genreOptions = useMemo(() => distinctGenres(songs.data ?? []), [songs.data]);
+  const findDuplicate = useMemo(() => duplicateFinder(songs.data ?? [], song?.id ?? null), [songs.data, song]);
   const genreIndex = useGenreIndex();
   const queryClient = useQueryClient();
   const youtubeStatus = useYoutubeStatus();
@@ -308,10 +360,32 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
     }));
   }
 
+  /** Prüft, ob es den Song schon gibt: über einen gespeicherten Link oder Titel und Interpret. */
+  function checkDuplicate(next: FormState) {
+    const found = findDuplicate({
+      title: next.title,
+      artist: next.artist,
+      appleMusicUrl: next.appleMusicUrl,
+      youtubeUrl: next.youtubeUrl,
+      youtubeMusicUrl: next.youtubeMusicUrl,
+    });
+    setDuplicate(found && !ignoredDuplicates.includes(found.song.id) ? found : null);
+  }
+
+  function ignoreDuplicate(existing: Song) {
+    setIgnoredDuplicates((ids) => [...ids, existing.id]);
+    setDuplicate(null);
+  }
+
+  function openSong(existing: Song) {
+    onOpenSong(existing);
+  }
+
   function submit(addAnother: boolean) {
     const { input, errors: found } = validate(form);
     setErrors(found);
     setSavedNote(null);
+    setConflictSongId(null);
     if (!input) {
       setFormError('Bitte die markierten Felder prüfen.');
       setFocusFirstError((count) => count + 1);
@@ -330,10 +404,16 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
           setSearchKey((key) => key + 1);
           bpmLookup.reset();
           genreLookup.reset();
+          setDuplicate(null);
+          setIgnoredDuplicates([]);
           setSavedNote(`„${saved.title}“ ist gespeichert.`);
         },
         onError: (err) => {
-          if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
+          const existingId = existingSongIdOf(err);
+          if (existingId !== null) {
+            setConflictSongId(existingId);
+            setFormError(errorMessage(err));
+          } else if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
             // Das Feld heißt im Formular „duration“, in der API „durationSeconds“.
             setErrors({ ...err.fields, duration: err.fields.durationSeconds });
             setFormError('Bitte die markierten Felder prüfen.');
@@ -505,6 +585,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
     });
   }
   const youtubeLinkWithoutVideo = form.youtubeUrl.trim() !== '' && extractYoutubeId(form.youtubeUrl) === null;
+  const conflictSong = conflictSongId === null ? null : (songs.data?.find((existing) => existing.id === conflictSongId) ?? null);
 
   return (
     <>
@@ -529,6 +610,14 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
             {formError && (
               <p className="form-error" role="alert">
                 {formError}
+                {conflictSong && (
+                  <>
+                    {' '}
+                    <button type="button" className="link-button" onClick={() => openSong(conflictSong)}>
+                      Vorhandenen Song öffnen
+                    </button>
+                  </>
+                )}
               </p>
             )}
             {savedNote && (
@@ -554,14 +643,26 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
           <OnlineSearch
             key={searchKey}
             autoFocus={!song}
+            findDuplicate={(result) => findDuplicate({ title: result.title, artist: result.artist, appleMusicUrl: result.appleMusicUrl })}
             onPick={(result) => {
+              const next = applyLookup(form, result, genreIndex);
               setForm((current) => applyLookup(current, result, genreIndex));
-              lookUpOnline(applyLookup(form, result, genreIndex));
+              lookUpOnline(next);
+              checkDuplicate(next);
               setErrors({});
               setFormError(null);
               setSavedNote(null);
             }}
           />
+
+          {duplicate && (
+            <DuplicateNote
+              duplicate={duplicate}
+              editing={song !== null}
+              onOpen={() => openSong(duplicate.song)}
+              onIgnore={() => ignoreDuplicate(duplicate.song)}
+            />
+          )}
 
           <div className="form-grid">
             <Field label="Titel" htmlFor={`${id}-title`} error={errors.title} className="span-3">
@@ -572,7 +673,10 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 maxLength={300}
                 data-autofocus={song ? true : undefined}
                 onChange={(event) => set('title', event.target.value)}
-                onBlur={() => lookUpOnline(form)}
+                onBlur={() => {
+                  lookUpOnline(form);
+                  checkDuplicate(form);
+                }}
               />
             </Field>
             <Field label="Interpret" htmlFor={`${id}-artist`} error={errors.artist} className="span-3">
@@ -582,7 +686,10 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                 value={form.artist}
                 maxLength={300}
                 onChange={(event) => set('artist', event.target.value)}
-                onBlur={() => lookUpOnline(form)}
+                onBlur={() => {
+                  lookUpOnline(form);
+                  checkDuplicate(form);
+                }}
               />
             </Field>
             <Field label="Album" htmlFor={`${id}-album`} error={errors.album} className="span-3">
@@ -712,6 +819,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
               query={query}
               error={errors.appleMusicUrl}
               onChange={(value) => set('appleMusicUrl', value)}
+              onBlur={() => checkDuplicate(form)}
             />
             <LinkField
               platform="youtube"
@@ -726,6 +834,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                   : undefined
               }
               onChange={(value) => set('youtubeUrl', value)}
+              onBlur={() => checkDuplicate(form)}
               onSearch={youtubeReady ? searchYoutube : undefined}
               searching={youtubeSearch.isPending}
             />
@@ -749,6 +858,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
                           className="lookup-result"
                           onClick={() => {
                             set('youtubeUrl', youtubeVideoUrl(video.videoId));
+                            checkDuplicate({ ...form, youtubeUrl: youtubeVideoUrl(video.videoId) });
                             youtubeSearch.reset();
                           }}
                         >
@@ -781,6 +891,7 @@ export function SongFormDialog({ song, onClose }: SongFormDialogProps) {
               error={errors.youtubeMusicUrl}
               hint="Kann leer bleiben, wenn ein YouTube-Link eingetragen ist – der funktioniert auch in YouTube Music."
               onChange={(value) => set('youtubeMusicUrl', value)}
+              onBlur={() => checkDuplicate(form)}
             />
           </fieldset>
 

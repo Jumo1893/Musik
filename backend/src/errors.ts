@@ -7,12 +7,15 @@ export class HttpError extends Error {
   readonly status: number;
   /** Maschinenlesbarer Grund, z. B. „youtube_reconnect“, damit die Oberfläche passend reagieren kann. */
   readonly code: string | undefined;
+  /** Weitere Angaben für die Oberfläche, z. B. die ID des vorhandenen Songs bei einer Dublette. */
+  readonly details: Record<string, unknown>;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = 'HttpError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -76,7 +79,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
   }
 
   if (err instanceof HttpError) {
-    res.status(err.status).json(err.code ? { error: err.message, code: err.code } : { error: err.message });
+    res.status(err.status).json({ ...err.details, error: err.message, ...(err.code ? { code: err.code } : {}) });
     return;
   }
 
