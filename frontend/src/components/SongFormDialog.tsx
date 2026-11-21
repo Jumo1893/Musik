@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Check, CopyCheck, Minus, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Check, CopyCheck, Minus, Pencil, Play, Plus, Search, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, errorMessage, existingSongIdOf } from '../api.ts';
 import { formatDuration, formatLongDate, parseDuration } from '../lib/format.ts';
-import { extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform } from '../lib/links.ts';
+import { extractAppleTrackId, extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform } from '../lib/links.ts';
 import { sameGenres, type GenreIndex } from '../lib/genres.ts';
 import { duplicateFinder, sameSong, type Duplicate } from '../lib/songMatching.ts';
 import { addGenre, distinctGenres, genreKey } from '../lib/songs.ts';
@@ -14,6 +14,7 @@ import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.t
 import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
 import { OnlineSearch, type PickExtras } from './OnlineSearch.tsx';
+import { PreviewButton, stopPreview, YoutubeEmbed } from './PreviewPlayer.tsx';
 import { Artwork, ChipToggle, colorProps, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput, SING_ALONG_LABELS } from './ui.tsx';
 import { useOnlineLookup } from './useOnlineLookup.ts';
 
@@ -49,6 +50,8 @@ interface FormState {
   hitYear: string | null;
   /** MusicBrainz hat das Jahr der Erstveröffentlichung eingetragen; `previous` war vorher im Feld. */
   firstYear: { year: string; previous: string; url: string } | null;
+  /** Hörprobe des übernommenen Treffers (wird nicht gespeichert) */
+  previewUrl: string;
 }
 
 type Errors = Record<string, string | undefined>;
@@ -79,6 +82,7 @@ const EMPTY_FORM: FormState = {
   autoYoutube: null,
   hitYear: null,
   firstYear: null,
+  previewUrl: '',
 };
 
 function formFromSong(song: Song): FormState {
@@ -103,6 +107,7 @@ function formFromSong(song: Song): FormState {
     autoYoutube: null,
     hitYear: null,
     firstYear: null,
+    previewUrl: '',
   };
 }
 
@@ -180,6 +185,7 @@ function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreInd
     releaseYear: result.releaseYear === null ? form.releaseYear : String(result.releaseYear),
     hitYear: result.releaseYear === null ? form.hitYear : String(result.releaseYear),
     firstYear: null,
+    previewUrl: result.previewUrl ?? '',
     genres,
     autoGenres,
     appleMusicUrl: result.appleMusicUrl ?? form.appleMusicUrl,
@@ -378,6 +384,8 @@ function missingLinksNote(form: FormState): string {
 
 interface SongSummaryProps {
   form: FormState;
+  /** Knopf zum Reinhören unter dem Cover */
+  listen: ReactNode;
   bpmSearching: boolean;
   genresSearching: boolean;
   youtubeSearching: boolean;
@@ -386,7 +394,7 @@ interface SongSummaryProps {
 }
 
 /** Karte der Schnellerfassung: die Angaben aus dem Treffer auf einen Blick. */
-function SongSummary({ form, bpmSearching, genresSearching, youtubeSearching, detailsOpen, onToggleDetails }: SongSummaryProps) {
+function SongSummary({ form, listen, bpmSearching, genresSearching, youtubeSearching, detailsOpen, onToggleDetails }: SongSummaryProps) {
   const meta = [form.artist, form.album, form.releaseYear].map((text) => text.trim()).filter(Boolean).join(' · ');
   const hasYoutube = form.youtubeUrl.trim() !== '' || form.youtubeMusicUrl.trim() !== '';
   const links = [
@@ -399,6 +407,7 @@ function SongSummary({ form, bpmSearching, genresSearching, youtubeSearching, de
     <section className="song-summary" aria-label="Angaben zum Song">
       <div className="song-summary-cover">
         <Artwork url={form.artworkUrl.trim() || null} size={72} />
+        {listen}
       </div>
       <div className="song-summary-main">
         <div className="song-summary-title">{form.title.trim() || 'Ohne Titel'}</div>
@@ -519,6 +528,11 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   const [notesOpen, setNotesOpen] = useState(false);
   /** Titel und Interpret stammen aus einem Videotitel und sollten geprüft werden. */
   const [fromVideo, setFromVideo] = useState(false);
+  /** Eingebetteter YouTube-Player ist offen */
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
+
+  // Schließen des Dialogs (oder der Wechsel zu einem anderen Song) hält die Hörprobe an.
+  useEffect(() => () => stopPreview(), []);
 
   const categories = useCategories();
   const songs = useSongs();
@@ -942,6 +956,28 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
     'Erscheinungsjahr'
   );
 
+  // Reinhören: die Hörprobe von Apple (aus dem Treffer oder über den Apple-Music-Link), sonst der YouTube-Player.
+  const listenVideoId = extractYoutubeId(form.youtubeUrl) ?? extractYoutubeId(form.youtubeMusicUrl);
+  const canPreview = form.previewUrl !== '' || extractAppleTrackId(form.appleMusicUrl) !== null;
+  const listenLabel = [form.title.trim(), form.artist.trim()].filter(Boolean).join(' von ') || 'dieser Song';
+  const listen: ReactNode = canPreview ? (
+    <PreviewButton
+      key={`${form.previewUrl}|${form.appleMusicUrl}`}
+      url={form.previewUrl || null}
+      appleMusicUrl={form.appleMusicUrl.trim() || null}
+      label={listenLabel}
+    />
+  ) : listenVideoId ? (
+    <button type="button" className="preview-button" aria-expanded={youtubeOpen} onClick={() => setYoutubeOpen((open) => !open)}>
+      <Play size={16} aria-hidden />
+      Im Dialog abspielen
+    </button>
+  ) : null;
+  const youtubePlayer =
+    !canPreview && listenVideoId && youtubeOpen ? (
+      <YoutubeEmbed videoId={listenVideoId} title={listenLabel} onClose={() => setYoutubeOpen(false)} />
+    ) : null;
+
   const videoHint = fromVideo ? (
     <span className="review-note" role="status">
       Aus dem Videotitel gelesen – bitte prüfen
@@ -1220,6 +1256,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
     >
       <div className="input-with-action">
         <Artwork url={form.artworkUrl.trim() || null} size={36} />
+        {listen}
         <input
           id={`${id}-artwork`}
           className="input"
@@ -1350,12 +1387,14 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
             <>
               <SongSummary
                 form={form}
+                listen={listen}
                 bpmSearching={bpmLookup.state.status === 'searching'}
                 genresSearching={genreLookup.state.status === 'searching'}
                 youtubeSearching={youtubeLinkLookup.state.status === 'searching'}
                 detailsOpen={detailsVisible}
                 onToggleDetails={() => setDetailsOpen(!detailsVisible)}
               />
+              {youtubePlayer}
               {detailsVisible && detailFields}
               {categorySection}
               {scaleSection}
@@ -1397,6 +1436,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
               </fieldset>
               <div className="form-grid">
                 {coverField}
+                {youtubePlayer && <div className="span-6">{youtubePlayer}</div>}
                 {notesField}
               </div>
             </>

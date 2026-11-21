@@ -2,7 +2,7 @@
 
 Eine App, in der ich meine beliebte Musik speichern und richtig analysieren kann und damit die richtigen Playlists erstellen kann.
 
-Gespeichert werden nur Angaben und Links zu den Songs – **keine Audiodateien**. Angehört wird auf Apple Music, YouTube oder YouTube Music.
+Gespeichert werden nur Angaben und Links zu den Songs – **keine Audiodateien**. Angehört wird auf Apple Music, YouTube oder YouTube Music; zum kurzen Reinhören spielt der Song-Dialog die 30-Sekunden-Hörprobe von Apple oder das YouTube-Video direkt ab.
 
 ## Was die App kann
 
@@ -271,6 +271,7 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 - Für YouTube-Links ohne Konto schickt das Backend den Titel des Songs an den SPARQL-Dienst von Wikidata (Eigenschaft „YouTube-Video-ID“) und fragt bei MusicBrainz die Links der gefundenen Aufnahme ab (nur deren ID). Jedes gefundene Video prüft es über die oEmbed-Schnittstelle von YouTube, gelöschte und private Videos werden übersprungen. Das passiert im Song-Dialog und bei „Fehlende YouTube-Links ergänzen“.
 - Cover werden beim Anzeigen direkt von der gespeicherten Bildadresse geladen (bei Treffern aus der Online-Suche von Apple, bei übernommenen Videos von YouTube).
 - Ein Klick auf einen Plattform-Link öffnet die jeweilige Seite in einem neuen Tab.
+- Reinhören im Song-Dialog lädt die Hörprobe direkt von Apple (audio-ssl.itunes.apple.com); für gespeicherte Songs fragt das Backend dafür die Track-ID aus dem Apple-Music-Link bei der iTunes Search API ab. Hat ein Song nur einen YouTube-Link, lädt „Im Dialog abspielen“ den Player von youtube-nocookie.com; YouTube erfährt dabei die Adresse der App (etwa `http://localhost:8090`), weil der Player sonst nicht startet.
 - Mit verbundenem YouTube-Konto spricht das Backend mit Google: Anmeldung, Lesen der eigenen Playlists, Suchen von Videos (Interpret und Titel des Songs) und Anlegen bzw. Ändern der übertragenen Playlists. Die Zugangsdaten liegen in der eigenen Datenbank und verlassen den Rechner nur in Richtung Google.
 
 Sonst bleibt alles auf dem eigenen Rechner.

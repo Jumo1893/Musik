@@ -13,8 +13,9 @@ server {
     gzip_types text/css application/javascript application/json image/svg+xml;
 
     # Der Browser darf nur Code und Styles der App selbst laden und nur mit der eigenen
-    # API sprechen. Bilder (Cover) dürfen von überall kommen.
-    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https: http:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    # API sprechen. Bilder (Cover) dürfen von überall kommen. Zum Reinhören im Song-Dialog
+    # dürfen die Hörproben von Apple und der datensparsame YouTube-Player geladen werden.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https: http:; media-src 'self' https://audio-ssl.itunes.apple.com; frame-src https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "no-referrer" always;
 

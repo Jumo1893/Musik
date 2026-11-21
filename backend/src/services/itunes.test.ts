@@ -15,6 +15,7 @@ const TRACK = {
   primaryGenreName: 'Country',
   trackViewUrl: 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605&uo=4',
   artworkUrl100: 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/cover.jpg/100x100bb.jpg',
+  previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/aa/bb/cc/mzaf_1.plus.aac.p.m4a',
 };
 
 function fakeFetch(body: unknown, status = 200): { fetchFn: typeof fetch; calls: URL[] } {
@@ -37,6 +38,7 @@ describe('mapItunesTrack', () => {
       genre: 'Country',
       appleMusicUrl: 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605',
       artworkUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/cover.jpg/300x300bb.jpg',
+      previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/aa/bb/cc/mzaf_1.plus.aac.p.m4a',
     });
   });
 
@@ -50,13 +52,20 @@ describe('mapItunesTrack', () => {
       genre: null,
       appleMusicUrl: null,
       artworkUrl: null,
+      previewUrl: null,
     });
   });
 
   test('verwirft Links, die nicht https sind', () => {
-    const mapped = mapItunesTrack({ ...TRACK, trackViewUrl: 'javascript:alert(1)', artworkUrl100: 'http://x/y.jpg' });
+    const mapped = mapItunesTrack({
+      ...TRACK,
+      trackViewUrl: 'javascript:alert(1)',
+      artworkUrl100: 'http://x/y.jpg',
+      previewUrl: 'http://audio.example/x.m4a',
+    });
     assert.equal(mapped?.appleMusicUrl, null);
     assert.equal(mapped?.artworkUrl, null);
+    assert.equal(mapped?.previewUrl, null);
   });
 
   test('verwirft Einträge ohne Titel oder Interpret', () => {

@@ -25,6 +25,7 @@ function result(overrides: Partial<LookupResult>): LookupResult {
     genre: null,
     appleMusicUrl: null,
     artworkUrl: null,
+    previewUrl: null,
     ...overrides,
   };
 }

@@ -20,6 +20,7 @@ const trackSchema = z.object({
   primaryGenreName: z.string().nullish(),
   trackViewUrl: z.string().nullish(),
   artworkUrl100: z.string().nullish(),
+  previewUrl: z.string().nullish(),
 });
 
 const responseSchema = z.object({ results: z.array(z.unknown()) });
@@ -59,6 +60,8 @@ export function mapItunesTrack(raw: unknown): LookupResult | null {
     genre: track.primaryGenreName || null,
     appleMusicUrl: trackUrl?.toString() ?? null,
     artworkUrl,
+    // 30 Sekunden zum Reinhören, direkt von Apple; gespeichert wird davon nichts.
+    previewUrl: httpsUrlOrNull(track.previewUrl)?.toString() ?? null,
   };
 }
 

@@ -6,6 +6,7 @@ import { formatDuration } from '../lib/format.ts';
 import { looksLikeLink } from '../lib/links.ts';
 import type { Duplicate } from '../lib/songMatching.ts';
 import type { LinkLookupResult, LookupResult } from '../types.ts';
+import { PreviewButton } from './PreviewPlayer.tsx';
 import { Artwork } from './ui.tsx';
 
 /** Was zu einem übernommenen Treffer noch dazugehört. */
@@ -44,6 +45,7 @@ function resultFromVideo(found: YoutubeLink): LookupResult | null {
     genre: null,
     appleMusicUrl: null,
     artworkUrl: found.video?.thumbnailUrl ?? null,
+    previewUrl: null,
   };
 }
 
@@ -54,9 +56,19 @@ interface ResultButtonProps {
   highlight?: boolean;
 }
 
+/** Treffer zum Übernehmen, daneben der Knopf zum Reinhören. */
 function ResultButton({ result, duplicate, onPick, highlight = false }: ResultButtonProps) {
   return (
-    <button type="button" className={`lookup-result ${highlight ? 'lookup-result-best' : ''}`} onClick={onPick}>
+    <div className={`lookup-item ${highlight ? 'lookup-item-best' : ''}`}>
+      <ResultPick result={result} duplicate={duplicate} onPick={onPick} />
+      {result.previewUrl && <PreviewButton url={result.previewUrl} label={`${result.title} von ${result.artist}`} compact />}
+    </div>
+  );
+}
+
+function ResultPick({ result, duplicate, onPick }: Omit<ResultButtonProps, 'highlight'>) {
+  return (
+    <button type="button" className="lookup-result" onClick={onPick}>
       <Artwork url={result.artworkUrl} size={44} />
       <span className="lookup-text">
         <span className="lookup-title">{result.title}</span>

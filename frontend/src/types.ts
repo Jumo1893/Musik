@@ -107,6 +107,8 @@ export interface LookupResult {
   genre: string | null;
   appleMusicUrl: string | null;
   artworkUrl: string | null;
+  /** Hörprobe von Apple (30 Sekunden), nur zum Abspielen im Browser */
+  previewUrl: string | null;
 }
 
 /** Ergebnis für einen eingefügten Link zu einem Song. */
