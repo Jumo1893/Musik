@@ -4,6 +4,11 @@ import type { Category, Song } from '../types.ts';
 import type { CsvCell } from './csv.ts';
 import { formatDuration } from './format.ts';
 
+/** Gleiche Sprache, egal in welcher Groß- und Kleinschreibung (wie in languages.ts). */
+function sameLanguage(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 /** Kleinschreibung ohne Akzente und Umlautpunkte: „Mädchen“ wird auch mit „madchen“ gefunden. */
 export function normalizeText(text: string): string {
   return text
@@ -19,6 +24,8 @@ export interface SongFilter {
   categoryIds: number[];
   /** Nur Songs ohne jede Kategorie. */
   onlyUncategorized: boolean;
+  /** Sprache: fehlt = alle, null = nur ohne Angabe, sonst genau diese (Groß-/Kleinschreibung egal). */
+  language?: string | null;
 }
 
 export function filterSongs(songs: Song[], filter: SongFilter): Song[] {
@@ -26,6 +33,11 @@ export function filterSongs(songs: Song[], filter: SongFilter): Song[] {
   return songs.filter((song) => {
     if (filter.onlyUncategorized && song.categoryIds.length > 0) return false;
     if (!filter.categoryIds.every((id) => song.categoryIds.includes(id))) return false;
+    if (filter.language !== undefined) {
+      if (filter.language === null ? song.language !== null : song.language === null || !sameLanguage(song.language, filter.language)) {
+        return false;
+      }
+    }
     if (words.length === 0) return true;
     const haystack = normalizeText(
       `${song.title} ${song.artist} ${song.album ?? ''} ${song.genres.join(' ')} ${song.mainGenres.join(' ')}`,
@@ -139,6 +151,7 @@ export const SONG_CSV_HEADER = [
   'Notizen',
   'Tonart',
   'Explicit',
+  'Sprache',
 ];
 
 export function songCsvRow(song: Song, categories: Map<number, Category>): CsvCell[] {
@@ -166,5 +179,6 @@ export function songCsvRow(song: Song, categories: Map<number, Category>): CsvCe
     song.notes,
     song.musicalKey,
     song.explicit === null ? null : song.explicit ? 'ja' : 'nein',
+    song.language,
   ];
 }

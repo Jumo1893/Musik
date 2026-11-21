@@ -8,6 +8,7 @@ import { sameGenres, type GenreIndex } from '../lib/genres.ts';
 import { duplicateFinder, sameSong, type Duplicate } from '../lib/songMatching.ts';
 import { addGenre, distinctGenres, genreKey } from '../lib/songs.ts';
 import { librarySuggestions, type ScaleHint } from '../lib/suggestions.ts';
+import { LANGUAGES, sameLanguage, suggestLanguage, type LanguageSuggestion } from '../lib/languages.ts';
 import { useById, useCategories, useConfig, useDeleteSong, useGenreIndex, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
 import type { GenreMatch, LookupResult, Song, SongInput } from '../types.ts';
 import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.tsx';
@@ -30,6 +31,8 @@ interface FormState {
   musicalKey: string;
   /** Text explizit; null: unbekannt */
   explicit: boolean | null;
+  /** „Deutsch“, „Englisch“, „Instrumental“, eine andere Sprache oder leer */
+  language: string;
   energy: number | null;
   singAlong: number | null;
   rating: number | null;
@@ -81,6 +84,7 @@ const EMPTY_FORM: FormState = {
   bpm: '',
   musicalKey: '',
   explicit: null,
+  language: '',
   energy: null,
   singAlong: null,
   rating: null,
@@ -108,6 +112,7 @@ function formFromSong(song: Song): FormState {
     bpm: song.bpm === null ? '' : String(song.bpm),
     musicalKey: song.musicalKey ?? '',
     explicit: song.explicit,
+    language: song.language ?? '',
     energy: song.energy,
     singAlong: song.singAlong,
     rating: song.rating,
@@ -140,6 +145,7 @@ function samePersonalInput(a: FormState, b: FormState): boolean {
     a.rating === b.rating &&
     a.energy === b.energy &&
     a.singAlong === b.singAlong &&
+    sameText(a.language, b.language) &&
     sameText(a.notes, b.notes)
   );
 }
@@ -273,6 +279,7 @@ function validate(form: FormState): { input: SongInput | null; errors: Errors } 
       bpm,
       musicalKey: textOrNull(form.musicalKey),
       explicit: form.explicit,
+      language: textOrNull(form.language),
       energy: form.energy,
       singAlong: form.singAlong,
       rating: form.rating,
@@ -503,6 +510,76 @@ function SongSummary({
         {detailsOpen ? 'Angaben zuklappen' : 'Angaben bearbeiten'}
       </button>
     </section>
+  );
+}
+
+interface LanguageFieldProps {
+  id: string;
+  value: string;
+  /** Naheliegende Sprache (setzt nichts von selbst) */
+  suggestion: LanguageSuggestion | null;
+  onChange: (value: string) => void;
+}
+
+/** Schnellauswahl der Sprache: Deutsch, Englisch, Instrumental oder eine andere als Freitext; keine Angabe ist erlaubt. */
+function LanguageField({ id, value, suggestion, onChange }: LanguageFieldProps) {
+  const known = LANGUAGES.find((language) => sameLanguage(language, value)) ?? null;
+  const [other, setOther] = useState(value.trim() !== '' && known === null);
+  const otherActive = other || (value.trim() !== '' && known === null);
+  return (
+    <div className="field span-6">
+      <span className="field-label" id={`${id}-language`}>
+        Sprache
+      </span>
+      <div className="language-row">
+        <div className="segmented" role="group" aria-labelledby={`${id}-language`}>
+          {LANGUAGES.map((language) => (
+            <button
+              key={language}
+              type="button"
+              aria-pressed={!otherActive && known === language}
+              onClick={() => {
+                setOther(false);
+                // Ein zweiter Klick hebt die Auswahl auf: keine Angabe ist erlaubt.
+                onChange(!otherActive && known === language ? '' : language);
+              }}
+            >
+              {language}
+            </button>
+          ))}
+          <button
+            type="button"
+            aria-pressed={otherActive}
+            onClick={() => {
+              setOther(!otherActive);
+              onChange('');
+            }}
+          >
+            andere Sprache
+          </button>
+        </div>
+        {otherActive && (
+          <input
+            className="input language-input"
+            aria-label="Andere Sprache"
+            value={value}
+            maxLength={50}
+            placeholder="z. B. Französisch"
+            autoFocus
+            onChange={(event) => onChange(event.target.value)}
+          />
+        )}
+      </div>
+      {suggestion && value.trim() === '' && !otherActive && (
+        <p className="field-hint">
+          Vorschlag:{' '}
+          <button type="button" className="link-button" onClick={() => onChange(suggestion.language)}>
+            {suggestion.language}
+          </button>{' '}
+          ({suggestion.reason})
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1228,6 +1305,8 @@ function SongForm({ song, onClose, onOpenSong, initialSearch, onSaved }: SongFor
     </fieldset>
   );
 
+  const languageSuggestion = suggestLanguage(form.title, form.genres);
+
   const scaleSection = (
     <div className="form-grid">
       <div className="field span-3">
@@ -1264,6 +1343,7 @@ function SongForm({ song, onClose, onOpenSong, initialSearch, onSaved }: SongFor
           onChange={(value) => set('singAlong', value)}
         />
       </div>
+      <LanguageField id={id} value={form.language} suggestion={languageSuggestion} onChange={(value) => set('language', value)} />
     </div>
   );
 

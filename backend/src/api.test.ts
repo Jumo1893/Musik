@@ -338,6 +338,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         bpm: 90,
         musicalKey: ' C♯/D♭ ',
         explicit: false,
+        language: ' englisch ',
         energy: 2,
         singAlong: 4,
         rating: 5,
@@ -359,6 +360,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(created.singAlong, 4);
       assert.equal(created.musicalKey, 'C♯/D♭');
       assert.equal(created.explicit, false);
+      assert.equal(created.language, 'Englisch', 'bekannte Sprachen in fester Schreibweise');
       assert.ok(!Number.isNaN(Date.parse(created.createdAt)));
 
       const fetched = await api('GET', `/api/songs/${created.id}`);
@@ -373,6 +375,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(created.youtubeUrl, null);
       assert.equal(created.musicalKey, null);
       assert.equal(created.explicit, null, 'unbekannt, solange nichts angegeben ist');
+      assert.equal(created.language, null);
       assert.deepEqual(created.categoryIds, []);
     });
 
@@ -676,10 +679,12 @@ describe('API', { skip: unavailable ?? false }, () => {
         withoutRating: 0,
         withoutEnergy: 0,
         withoutSingAlong: 0,
+        withoutLanguage: 0,
         withoutLinks: 0,
       });
       assert.deepEqual(body.topArtists, []);
       assert.deepEqual(body.bySingAlong, []);
+      assert.deepEqual(body.byLanguage, []);
       assert.deepEqual(body.byDecade, []);
       assert.equal(body.byCategory.length, 3);
     });
@@ -695,6 +700,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         energy: 4,
         singAlong: 5,
         bpm: 120,
+        language: 'Englisch',
         categoryIds: [CALM, SUMMER],
         youtubeUrl: 'https://youtu.be/8AHCfZTRGiI',
       });
@@ -708,6 +714,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         energy: 2,
         singAlong: 2,
         bpm: 100,
+        language: 'Schwedisch',
         categoryIds: [CALM, SUMMER],
       });
       await createSong({
@@ -717,6 +724,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         releaseYear: 1982,
         genres: ['Rock'],
         singAlong: 5,
+        language: 'instrumental',
         categoryIds: [CALM],
       });
       await createSong({ title: 'd', artist: 'Unbekannt' });
@@ -737,6 +745,7 @@ describe('API', { skip: unavailable ?? false }, () => {
         withoutRating: 2,
         withoutEnergy: 2,
         withoutSingAlong: 1,
+        withoutLanguage: 1,
         withoutLinks: 3,
       });
 
@@ -793,6 +802,12 @@ describe('API', { skip: unavailable ?? false }, () => {
         { singAlong: 2, songCount: 1 },
         { singAlong: 5, songCount: 2 },
         { singAlong: null, songCount: 1 },
+      ]);
+      assert.deepEqual(body.byLanguage, [
+        { language: 'Englisch', songCount: 1 },
+        { language: 'Instrumental', songCount: 1 },
+        { language: 'Schwedisch', songCount: 1 },
+        { language: null, songCount: 1 },
       ]);
       assert.deepEqual(body.byDurationMinute, [
         { minute: 1, songCount: 1 },

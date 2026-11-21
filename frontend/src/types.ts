@@ -16,6 +16,8 @@ export interface Song {
   musicalKey: string | null;
   /** Text gilt als explizit; null: unbekannt */
   explicit: boolean | null;
+  /** „Deutsch“, „Englisch“, „Instrumental“ oder eine andere Sprache; null: keine Angabe */
+  language: string | null;
   /** 1 (ruhig) bis 5 (sehr energiegeladen) */
   energy: number | null;
   /** 1 (lieber zuhören) bis 5 (lauthals mitsingen) */
@@ -71,6 +73,8 @@ export interface GeneratorCriteria {
   yearTo: number | null;
   /** Songs mit explizitem Text weglassen (unbekannte bleiben dabei) */
   excludeExplicit: boolean;
+  /** Erlaubte Sprachen (auch „Instrumental“); leer heißt „egal“ */
+  languages: string[];
   targetMinutes: number | null;
   maxSongs: number | null;
   maxPerArtist: number | null;
@@ -238,6 +242,7 @@ export interface Stats {
     withoutRating: number;
     withoutEnergy: number;
     withoutSingAlong: number;
+    withoutLanguage: number;
     withoutLinks: number;
   };
   byCategory: Array<{
@@ -260,6 +265,8 @@ export interface Stats {
   byRating: Array<{ rating: number | null; songCount: number }>;
   byEnergy: Array<{ energy: number | null; songCount: number }>;
   bySingAlong: Array<{ singAlong: number | null; songCount: number }>;
+  /** Songs je Sprache; language null: ohne Angabe */
+  byLanguage: Array<{ language: string | null; songCount: number }>;
   /** Dauer in ganzen Minuten abgerundet; 7 steht für „7 Minuten und länger“. */
   byDurationMinute: Array<{ minute: number; songCount: number }>;
   categoryPairs: Array<{ firstId: number; secondId: number; songCount: number }>;

@@ -19,6 +19,7 @@ const TOTALS = `
          (count(*) FILTER (WHERE rating IS NULL))::integer   AS without_rating,
          (count(*) FILTER (WHERE energy IS NULL))::integer   AS without_energy,
          (count(*) FILTER (WHERE sing_along IS NULL))::integer AS without_sing_along,
+         (count(*) FILTER (WHERE language IS NULL))::integer AS without_language,
          (count(*) FILTER (WHERE apple_music_url IS NULL
                              AND youtube_url IS NULL
                              AND youtube_music_url IS NULL))::integer AS without_links
@@ -86,6 +87,13 @@ const BY_ENERGY = `
 const BY_SING_ALONG = `
   SELECT sing_along, count(*)::integer AS song_count FROM songs GROUP BY sing_along ORDER BY sing_along NULLS LAST`;
 
+// Schreibweisen, die sich nur in Groß-/Kleinschreibung unterscheiden, zählen als eine Sprache.
+const BY_LANGUAGE = `
+  SELECT min(language) AS language, count(*)::integer AS song_count
+    FROM songs
+   GROUP BY lower(language)
+   ORDER BY song_count DESC, lower(language) NULLS LAST`;
+
 const BY_DURATION_MINUTE = `
   SELECT LEAST(duration_seconds / 60, 7)::integer AS minute, count(*)::integer AS song_count
     FROM songs
@@ -115,6 +123,7 @@ export function statsRouter(pool: Pool): Router {
     const byRating = (await pool.query(BY_RATING)).rows;
     const byEnergy = (await pool.query(BY_ENERGY)).rows;
     const bySingAlong = (await pool.query(BY_SING_ALONG)).rows;
+    const byLanguage = (await pool.query(BY_LANGUAGE)).rows;
     const byDurationMinute = (await pool.query(BY_DURATION_MINUTE)).rows;
     const categoryPairs = (await pool.query(CATEGORY_PAIRS)).rows;
 
@@ -132,6 +141,7 @@ export function statsRouter(pool: Pool): Router {
         withoutRating: totals.without_rating,
         withoutEnergy: totals.without_energy,
         withoutSingAlong: totals.without_sing_along,
+        withoutLanguage: totals.without_language,
         withoutLinks: totals.without_links,
       },
       byCategory: byCategory.map((row) => ({
@@ -156,6 +166,7 @@ export function statsRouter(pool: Pool): Router {
       byRating: byRating.map((row) => ({ rating: row.rating, songCount: row.song_count })),
       byEnergy: byEnergy.map((row) => ({ energy: row.energy, songCount: row.song_count })),
       bySingAlong: bySingAlong.map((row) => ({ singAlong: row.sing_along, songCount: row.song_count })),
+      byLanguage: byLanguage.map((row) => ({ language: row.language, songCount: row.song_count })),
       byDurationMinute: byDurationMinute.map((row) => ({ minute: row.minute, songCount: row.song_count })),
       categoryPairs: categoryPairs.map((row) => ({
         firstId: row.first_id,

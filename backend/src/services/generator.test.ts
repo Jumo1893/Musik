@@ -26,6 +26,7 @@ function song(overrides: Partial<GeneratorSong> = {}): GeneratorSong {
     singAlong: 3,
     rating: 3,
     explicit: null,
+    language: null,
     categoryIds: [],
     ...overrides,
   };
@@ -156,6 +157,18 @@ describe('Filter', () => {
     const unknown = song({ explicit: null });
     assert.deepEqual(ids(pick([clean, rude, unknown], { excludeExplicit: true })), ids([clean, unknown]));
     assert.deepEqual(ids(pick([clean, rude, unknown])), ids([clean, rude, unknown]), 'ohne Option bleiben alle');
+  });
+
+  test('Sprachen: gewünschte zählen, egal in welcher Schreibweise; ohne Angabe fällt heraus', () => {
+    const german = song({ language: 'Deutsch' });
+    const english = song({ language: 'Englisch' });
+    const instrumental = song({ language: 'Instrumental' });
+    const french = song({ language: 'Französisch' });
+    const unknown = song({ language: null });
+    const all = [german, english, instrumental, french, unknown];
+    assert.deepEqual(ids(pick(all, { languages: ['deutsch', 'Instrumental'] })), ids([german, instrumental]));
+    assert.deepEqual(ids(pick(all, { languages: ['Französisch'] })), [french.id]);
+    assert.deepEqual(ids(pick(all)), ids(all), 'ohne Auswahl sind alle dabei');
   });
 
   test('vertauschte Bereichsgrenzen werden verziehen', () => {

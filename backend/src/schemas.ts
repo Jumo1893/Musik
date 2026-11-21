@@ -45,6 +45,20 @@ const optionalText = (maxLength: number) =>
     .nullish()
     .transform((value) => (value ? value : null));
 
+/** Sprachen mit fester Schreibweise; alles andere bleibt, wie es eingegeben wurde. */
+export const KNOWN_LANGUAGES = ['Deutsch', 'Englisch', 'Instrumental'] as const;
+
+/** Sprache eines Songs: „deutsch“ wird zu „Deutsch“, leer zu NULL. */
+const optionalLanguage = z
+  .string()
+  .trim()
+  .max(50)
+  .nullish()
+  .transform((value) => {
+    if (!value) return null;
+    return KNOWN_LANGUAGES.find((known) => known.toLowerCase() === value.toLowerCase()) ?? value;
+  });
+
 const optionalInt = (min: number, max: number) =>
   z
     .number()
@@ -109,6 +123,7 @@ export const songInputSchema = z.object({
     .boolean()
     .nullish()
     .transform((value) => value ?? null),
+  language: optionalLanguage,
   energy: optionalInt(1, 5),
   singAlong: optionalInt(1, 5),
   rating: optionalInt(1, 5),
@@ -160,6 +175,8 @@ export const generatorCriteriaSchema = z.object({
   yearTo: optionalInt(1000, 2200),
   /** Songs mit explizitem Text weglassen (unbekannte bleiben dabei). */
   excludeExplicit: z.boolean().default(false),
+  /** Erlaubte Sprachen (auch „Instrumental“); leer bedeutet „egal“. */
+  languages: z.array(z.string().trim().min(1).max(50)).max(50).default([]),
   targetMinutes: optionalInt(1, 1440),
   maxSongs: optionalInt(1, 1000),
   maxPerArtist: optionalInt(1, 100),

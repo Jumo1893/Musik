@@ -19,6 +19,7 @@ import {
 import { EMPTY_CRITERIA, ORDER_OPTIONS, randomSeed, suggestPlaylistName } from '../lib/criteria.ts';
 import { formatDuration, formatSongCount, formatTotalDuration } from '../lib/format.ts';
 import { libraryGenreGroups } from '../lib/genres.ts';
+import { libraryLanguages, sameLanguage } from '../lib/languages.ts';
 import { totalDuration } from '../lib/songs.ts';
 import { useById, useCategories, useCreatePlaylist, useGenreIndex, usePlaylists, useSongs } from '../queries.ts';
 import type { Category, GeneratorCriteria, PlaylistOrder, Song } from '../types.ts';
@@ -161,6 +162,7 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
 
   const genreIndex = useGenreIndex();
   const genreGroups = useMemo(() => libraryGenreGroups(songs, genreIndex), [songs, genreIndex]);
+  const languageOptions = useMemo(() => libraryLanguages(songs), [songs]);
   const request = useDebounced(
     useMemo(() => ({ ...criteria, seed }), [criteria, seed]),
     250,
@@ -189,6 +191,15 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
     });
   }
 
+  function toggleLanguage(language: string) {
+    setCriteria((current) => ({
+      ...current,
+      languages: current.languages.some((existing) => sameLanguage(existing, language))
+        ? current.languages.filter((existing) => !sameLanguage(existing, language))
+        : [...current.languages, language],
+    }));
+  }
+
   function toggleGenre(genre: string) {
     setCriteria((current) => ({
       ...current,
@@ -215,6 +226,7 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
     year:
       criteria.yearFrom === null && criteria.yearTo === null ? 0 : songs.filter((song) => song.releaseYear === null).length,
     explicit: songs.filter((song) => song.explicit === null).length,
+    language: criteria.languages.length === 0 ? 0 : songs.filter((song) => song.language === null).length,
   };
   const missingNote = (count: number, what: string) =>
     count > 0 ? (
@@ -420,6 +432,28 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
               {criteria.excludeExplicit && missing.explicit > 0 ? ` (${formatSongCount(missing.explicit)})` : ''}.
             </p>
           </fieldset>
+
+          {languageOptions.length > 0 && (
+            <fieldset className="form-section">
+              <legend>Sprache</legend>
+              <div className="chip-list">
+                {languageOptions.map(({ language, count }) => (
+                  <button
+                    key={language}
+                    type="button"
+                    className="chip chip-toggle chip-plain"
+                    aria-pressed={criteria.languages.some((existing) => sameLanguage(existing, language))}
+                    onClick={() => toggleLanguage(language)}
+                  >
+                    {language}
+                    <span className="chip-count">{count}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="field-hint">Nichts gewählt heißt: alle Sprachen. „Instrumental“ sind Songs ohne Gesang.</p>
+              {missingNote(missing.language, 'Sprach-Angabe')}
+            </fieldset>
+          )}
 
           <fieldset className="form-section">
             <legend>Erscheinungsjahr</legend>

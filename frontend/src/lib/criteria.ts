@@ -24,6 +24,7 @@ export const EMPTY_CRITERIA: GeneratorCriteria = {
   yearFrom: null,
   yearTo: null,
   excludeExplicit: false,
+  languages: [],
   targetMinutes: 60,
   maxSongs: null,
   maxPerArtist: null,
@@ -72,8 +73,10 @@ export function describeCriteria(criteria: GeneratorCriteria, categories: Map<nu
   const years = range(criteria.yearFrom, criteria.yearTo);
   if (years) parts.push(/^\d/.test(years) ? `Jahr ${years}` : years);
 
-  // Playlists von vor dieser Option haben die Angabe gar nicht.
+  // Playlists von vor diesen Optionen haben die Angaben gar nicht.
   if (criteria.excludeExplicit) parts.push('ohne explizite Texte');
+  const languages = criteria.languages ?? [];
+  if (languages.length > 0) parts.push(`Sprache: ${languages.join(', ')}`);
 
   if (criteria.targetMinutes !== null) parts.push(`Ziel ${criteria.targetMinutes} Min.`);
   if (criteria.maxSongs !== null) parts.push(`höchstens ${criteria.maxSongs} ${criteria.maxSongs === 1 ? 'Song' : 'Songs'}`);

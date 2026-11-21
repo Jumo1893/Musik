@@ -146,6 +146,36 @@ function genreChart(
   };
 }
 
+/** Balken je Sprache, die Songs ohne Angabe in Grau am Ende. */
+function languageChart(stats: Stats): { rows: BarRow[]; table: TableView } {
+  const total = stats.totals.songCount;
+  const named = stats.byLanguage.filter((entry) => entry.language !== null);
+  const rows: BarRow[] = named.map((entry) => ({
+    key: entry.language!,
+    label: entry.language!,
+    value: entry.songCount,
+    valueLabel: number(entry.songCount),
+    tooltip: countLines(entry.songCount, total),
+  }));
+  if (stats.totals.withoutLanguage > 0) {
+    rows.push({
+      key: 'none',
+      label: 'Ohne Angabe',
+      muted: true,
+      value: stats.totals.withoutLanguage,
+      valueLabel: number(stats.totals.withoutLanguage),
+      tooltip: countLines(stats.totals.withoutLanguage, total),
+    });
+  }
+  return {
+    rows,
+    table: {
+      columns: ['Sprache', 'Songs', 'Anteil'],
+      rows: stats.byLanguage.map((entry) => [entry.language ?? 'Ohne Angabe', number(entry.songCount), percent(entry.songCount, total)]),
+    },
+  };
+}
+
 function tableFromColumns(header: string, columns: Column[], total: number): TableView {
   return {
     columns: [header, 'Songs', 'Anteil'],
@@ -290,6 +320,7 @@ export function StatsPage() {
     total,
     (step) => `Mitsingen ${step} – ${SING_ALONG_LABELS[step - 1]}`,
   );
+  const languages = languageChart(data);
   const categoriesById = new Map(data.byCategory.map((category) => [category.id, category]));
   const pairs = data.categoryPairs
     .map((pair) => ({ ...pair, first: categoriesById.get(pair.firstId), second: categoriesById.get(pair.secondId) }))
@@ -397,6 +428,18 @@ export function StatsPage() {
           <ColumnChart columns={singAlongs} />
         </ChartCard>
 
+        <ChartCard
+          title="Sprachen"
+          subtitle="Anzahl Songs je Sprache; „Instrumental“ heißt ohne Gesang."
+          table={languages.table}
+        >
+          {data.totals.withoutLanguage === total ? (
+            <p className="chart-empty">Noch kein Song mit Sprach-Angabe.</p>
+          ) : (
+            <BarList rows={languages.rows} />
+          )}
+        </ChartCard>
+
         <ChartCard title="Häufige Kombinationen" subtitle="Kategorien, die oft gemeinsam an einem Song hängen.">
           {pairs.length === 0 ? (
             <p className="chart-empty">Noch kein Song mit zwei Kategorien.</p>
@@ -436,6 +479,7 @@ export function StatsPage() {
               { key: 'rating', label: 'Mit Bewertung', value: rated, total },
               { key: 'energy', label: 'Mit Energie-Angabe', value: total - totals.withoutEnergy, total },
               { key: 'singAlong', label: 'Mit Mitsingen-Angabe', value: total - totals.withoutSingAlong, total },
+              { key: 'language', label: 'Mit Sprach-Angabe', value: total - totals.withoutLanguage, total },
               { key: 'duration', label: 'Mit Dauer', value: total - totals.withoutDuration, total },
               { key: 'links', label: 'Mit Streaming-Link', value: total - totals.withoutLinks, total },
             ]}

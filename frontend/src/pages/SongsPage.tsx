@@ -14,6 +14,7 @@ import {
   Stars,
 } from '../components/ui.tsx';
 import { downloadTextFile, toCsv } from '../lib/csv.ts';
+import { libraryLanguages } from '../lib/languages.ts';
 import { formatDuration, formatSongCount, formatTotalDuration } from '../lib/format.ts';
 import { filterSongs, SONG_CSV_HEADER, songCsvRow, sortSongs, totalDuration, type SortState } from '../lib/songs.ts';
 import { useById, useCategories, useSongs } from '../queries.ts';
@@ -34,6 +35,9 @@ const SORT_OPTIONS: Array<{ id: string; label: string; sort: SortState }> = [
 // Kategorien-Seite direkt auf eine gefilterte Songliste verlinken kann.
 const PARAM_CATEGORIES = 'kategorie';
 const PARAM_WITHOUT = 'ohne';
+// Sprach-Filter: ?sprache=Deutsch, ?sprache=ohne für Songs ohne Angabe
+const PARAM_LANGUAGE = 'sprache';
+const LANGUAGE_NONE = 'ohne';
 
 function parseIds(value: string | null): number[] {
   return (value ?? '')
@@ -54,12 +58,21 @@ export function SongsPage() {
   const categoryParam = searchParams.get(PARAM_CATEGORIES);
   const selectedIds = useMemo(() => parseIds(categoryParam), [categoryParam]);
   const onlyUncategorized = searchParams.get(PARAM_WITHOUT) === 'kategorie';
+  const languageParam = searchParams.get(PARAM_LANGUAGE);
   const sort = (SORT_OPTIONS.find((option) => option.id === sortId) ?? SORT_OPTIONS[0]!).sort;
 
-  const visible = useMemo(
-    () => sortSongs(filterSongs(songs.data ?? [], { text, categoryIds: selectedIds, onlyUncategorized }), sort),
-    [songs.data, text, selectedIds, onlyUncategorized, sort],
-  );
+  const visible = useMemo(() => {
+    const language = languageParam === null ? {} : { language: languageParam === LANGUAGE_NONE ? null : languageParam };
+    return sortSongs(filterSongs(songs.data ?? [], { text, categoryIds: selectedIds, onlyUncategorized, ...language }), sort);
+  }, [songs.data, text, selectedIds, onlyUncategorized, languageParam, sort]);
+  const languages = useMemo(() => libraryLanguages(songs.data ?? []), [songs.data]);
+
+  function setLanguage(value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (value === '') next.delete(PARAM_LANGUAGE);
+    else next.set(PARAM_LANGUAGE, value);
+    setSearchParams(next, { replace: true });
+  }
 
   function setFilter(categoryIds: number[], uncategorized: boolean) {
     const next = new URLSearchParams(searchParams);
@@ -76,7 +89,9 @@ export function SongsPage() {
 
   function resetFilters() {
     setText('');
-    setFilter([], false);
+    const next = new URLSearchParams(searchParams);
+    for (const param of [PARAM_CATEGORIES, PARAM_WITHOUT, PARAM_LANGUAGE]) next.delete(param);
+    setSearchParams(next, { replace: true });
   }
 
   function exportCsv() {
@@ -88,8 +103,9 @@ export function SongsPage() {
   }
 
   const all = songs.data ?? [];
-  const filtered = text.trim() !== '' || selectedIds.length > 0 || onlyUncategorized;
+  const filtered = text.trim() !== '' || selectedIds.length > 0 || onlyUncategorized || languageParam !== null;
   const uncategorizedCount = all.filter((song) => song.categoryIds.length === 0).length;
+  const withoutLanguage = all.filter((song) => song.language === null).length;
 
   return (
     <>
@@ -146,6 +162,20 @@ export function SongsPage() {
                 ))}
               </select>
             </label>
+            {(languages.length > 0 || languageParam !== null) && (
+              <label className="toolbar-sort">
+                <span>Sprache</span>
+                <select className="input" value={languageParam ?? ''} onChange={(event) => setLanguage(event.target.value)}>
+                  <option value="">alle</option>
+                  {languages.map(({ language, count }) => (
+                    <option key={language} value={language}>
+                      {language} ({count})
+                    </option>
+                  ))}
+                  {withoutLanguage > 0 && <option value={LANGUAGE_NONE}>ohne Angabe ({withoutLanguage})</option>}
+                </select>
+              </label>
+            )}
           </div>
 
           {(categories.data ?? []).length > 0 && (

@@ -22,6 +22,7 @@ import {
 } from './links.ts';
 import { duplicateFinder } from './songMatching.ts';
 import { librarySuggestions, type SuggestionTarget } from './suggestions.ts';
+import { libraryLanguages, suggestLanguage } from './languages.ts';
 import {
   addGenre,
   distinctGenres,
@@ -51,6 +52,7 @@ function song(overrides: Partial<Song> = {}): Song {
     bpm: null,
     musicalKey: null,
     explicit: null,
+    language: null,
     energy: null,
     singAlong: null,
     rating: null,
@@ -719,8 +721,47 @@ describe('Tonart und explizite Texte', () => {
       'ohne explizite Texte',
     ]);
     const row = songCsvRow(song({ musicalKey: 'C♯/D♭', explicit: true }), new Map());
-    expect(SONG_CSV_HEADER.slice(-2)).toEqual(['Tonart', 'Explicit']);
-    expect(row.slice(-2)).toEqual(['C♯/D♭', 'ja']);
-    expect(songCsvRow(song({ explicit: null }), new Map()).at(-1)).toBeNull();
+    expect(SONG_CSV_HEADER.slice(-3, -1)).toEqual(['Tonart', 'Explicit']);
+    expect(row.slice(-3, -1)).toEqual(['C♯/D♭', 'ja']);
+    expect(songCsvRow(song({ explicit: null }), new Map()).at(-2)).toBeNull();
+  });
+});
+
+describe('Sprache', () => {
+  test('suggestLanguage schlägt nur Naheliegendes vor', () => {
+    expect(suggestLanguage('Atemlos durch die Nacht', ['Schlager'])).toEqual({ language: 'Deutsch', reason: 'wegen Schlager' });
+    expect(suggestLanguage('Was du Liebe nennst', ['Hip-Hop', 'Deutschrap'])?.language).toBe('Deutsch');
+    expect(suggestLanguage('Major Tom', ['Neue Deutsche Welle'])?.language).toBe('Deutsch');
+    expect(suggestLanguage('Hurt (Instrumental)', ['Country'])).toEqual({ language: 'Instrumental', reason: '„Instrumental“ im Titel' });
+    expect(suggestLanguage('Hurt', ['Country', 'Rock'])).toBeNull();
+  });
+
+  test('libraryLanguages zählt Schreibweisen zusammen, die festen Sprachen zuerst', () => {
+    const songs = [
+      song({ language: 'Französisch' }),
+      song({ language: 'Englisch' }),
+      song({ language: 'deutsch' }),
+      song({ language: 'Deutsch' }),
+      song({ language: null }),
+    ];
+    expect(libraryLanguages(songs)).toEqual([
+      { language: 'deutsch', count: 2 },
+      { language: 'Englisch', count: 1 },
+      { language: 'Französisch', count: 1 },
+    ]);
+  });
+
+  test('filterSongs filtert nach Sprache oder nach fehlender Angabe; Kriterien und CSV nennen sie', () => {
+    const german = song({ language: 'Deutsch' });
+    const none = song({ language: null });
+    const base = { text: '', categoryIds: [], onlyUncategorized: false };
+    expect(filterSongs([german, none], { ...base, language: 'deutsch' })).toEqual([german]);
+    expect(filterSongs([german, none], { ...base, language: null })).toEqual([none]);
+    expect(filterSongs([german, none], base)).toEqual([german, none]);
+    expect(describeCriteria({ ...EMPTY_CRITERIA, targetMinutes: null, languages: ['Deutsch', 'Instrumental'] }, new Map())).toEqual([
+      'Sprache: Deutsch, Instrumental',
+    ]);
+    expect(songCsvRow(german, new Map()).at(-1)).toBe('Deutsch');
+    expect(SONG_CSV_HEADER.at(-1)).toBe('Sprache');
   });
 });

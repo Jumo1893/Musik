@@ -75,6 +75,7 @@ export async function importFromYoutube(
       bpm: null,
       musicalKey: null,
       explicit: null,
+      language: null,
       energy: null,
       singAlong: null,
       rating: null,

@@ -18,6 +18,8 @@ export interface GeneratorSong {
   rating: number | null;
   /** Text gilt als explizit; null: unbekannt */
   explicit: boolean | null;
+  /** Sprache; null: keine Angabe */
+  language: string | null;
   categoryIds: number[];
 }
 
@@ -96,6 +98,7 @@ export function buildFilter(criteria: GeneratorCriteria): (song: GeneratorSong) 
   const excluded = new Set(criteria.excludeCategoryIds);
   const excludedSongs = new Set(criteria.excludeSongIds);
   const genres = new Set(criteria.genres.map((genre) => genre.trim().toLowerCase()));
+  const languages = new Set(criteria.languages.map((language) => language.trim().toLowerCase()));
   const [energyMin, energyMax] = orderedRange(criteria.energyMin, criteria.energyMax);
   const [singAlongMin, singAlongMax] = orderedRange(criteria.singAlongMin, criteria.singAlongMax);
   const [yearFrom, yearTo] = orderedRange(criteria.yearFrom, criteria.yearTo);
@@ -113,6 +116,8 @@ export function buildFilter(criteria: GeneratorCriteria): (song: GeneratorSong) 
     if (genres.size > 0 && ![...song.genres, ...song.mainGenres].some((genre) => genres.has(genre.trim().toLowerCase()))) {
       return false;
     }
+    // Ein Song ohne Sprach-Angabe kann eine gewünschte Sprache nicht erfüllen.
+    if (languages.size > 0 && (song.language === null || !languages.has(song.language.trim().toLowerCase()))) return false;
     if (criteria.minRating !== null && (song.rating === null || song.rating < criteria.minRating)) return false;
     if (!withinRange(song.energy, energyMin, energyMax)) return false;
     if (!withinRange(song.singAlong, singAlongMin, singAlongMax)) return false;
