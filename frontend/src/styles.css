@@ -1748,6 +1748,37 @@ a {
   font-weight: 600;
 }
 
+/* Vorschläge aus ähnlichen Songs der Bibliothek */
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.suggestion-label {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.chip-suggestion {
+  gap: 4px;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--chip-color) 70%, transparent);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chip-suggestion:hover {
+  background: color-mix(in srgb, var(--chip-color) 13%, transparent);
+}
+
+.scale-hint {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 /* Auswahl zu einem eingefügten YouTube-Link */
 .link-choice {
   display: flex;

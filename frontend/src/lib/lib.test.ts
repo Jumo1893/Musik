@@ -21,6 +21,7 @@ import {
   YOUTUBE_QUEUE_LIMIT,
 } from './links.ts';
 import { duplicateFinder } from './songMatching.ts';
+import { librarySuggestions, type SuggestionTarget } from './suggestions.ts';
 import {
   addGenre,
   distinctGenres,
@@ -625,5 +626,76 @@ describe('Links im Suchfeld', () => {
     expect(looksLikeLink('music.youtube.com/watch?v=8AHCfZTRGiI')).toBe(true);
     expect(looksLikeLink('Hurt Johnny Cash')).toBe(false);
     expect(looksLikeLink('https://example.org/x y')).toBe(false);
+  });
+});
+
+describe('Vorschläge aus ähnlichen Songs', () => {
+  const MELANCHOLY = 1;
+  const CALM = 2;
+  const PARTY = 3;
+  const categories = new Map<number, Category>([
+    [MELANCHOLY, { id: MELANCHOLY, name: 'melancholisch', color: '#2a78d6', description: null, songCount: 0 }],
+    [CALM, { id: CALM, name: 'ruhig', color: '#1baf7a', description: null, songCount: 0 }],
+    [PARTY, { id: PARTY, name: 'Party', color: '#eb6834', description: null, songCount: 0 }],
+  ]);
+  const cash = (overrides: Partial<Song>) => song({ artist: 'Johnny Cash', ...overrides });
+  const target = (overrides: Partial<SuggestionTarget> = {}): SuggestionTarget => ({
+    id: null,
+    artist: 'Johnny Cash',
+    genres: [],
+    mainGenres: [],
+    bpm: null,
+    ...overrides,
+  });
+
+  test('gleicher Interpret: ab zwei Songs und wenn mindestens die Hälfte die Kategorie hat', () => {
+    const library = [
+      cash({ categoryIds: [MELANCHOLY, CALM], energy: 2 }),
+      cash({ categoryIds: [MELANCHOLY], energy: 2 }),
+      cash({ categoryIds: [MELANCHOLY, PARTY], energy: 4 }),
+      cash({ categoryIds: [] }),
+      song({ artist: 'Nine Inch Nails', categoryIds: [PARTY] }),
+    ];
+    const result = librarySuggestions(library, target(), categories);
+    expect(result.categories.map((item) => item.categoryId)).toEqual([MELANCHOLY]);
+    expect(result.categories[0]!.reason).toBe('3 von 3 Songs von Johnny Cash haben „melancholisch“');
+    expect(result.energy).toEqual({ value: 2, count: 2, total: 3, basis: 'Songs von Johnny Cash' });
+    expect(result.singAlong).toBeNull();
+
+    // Schon gewählte Kategorien werden nicht noch einmal vorgeschlagen.
+    expect(librarySuggestions(library, target(), categories, [MELANCHOLY]).categories).toEqual([]);
+    // Ein einzelner Song reicht nicht.
+    expect(librarySuggestions(library.slice(0, 1), target(), categories).categories).toEqual([]);
+  });
+
+  test('der Interpret zählt stärker als ein gemeinsames Untergenre, das mehr als ein Hauptgenre mit Tempo', () => {
+    const library = [
+      song({ artist: 'A', genres: ['Alternative Rock'], mainGenres: ['Rock'], categoryIds: [PARTY] }),
+      song({ artist: 'B', genres: ['Alternative Rock'], mainGenres: ['Rock'], categoryIds: [PARTY] }),
+      cash({ categoryIds: [CALM] }),
+      cash({ categoryIds: [CALM] }),
+      song({ artist: 'C', genres: ['Rock'], mainGenres: ['Rock'], bpm: 125, categoryIds: [MELANCHOLY] }),
+      song({ artist: 'D', genres: ['Punk Rock'], mainGenres: ['Rock'], bpm: 118, categoryIds: [MELANCHOLY] }),
+      song({ artist: 'E', genres: ['Rock'], mainGenres: ['Rock'], bpm: 160, categoryIds: [PARTY] }),
+    ];
+    const result = librarySuggestions(
+      library,
+      target({ genres: ['Alternative Rock'], mainGenres: ['Rock'], bpm: 120 }),
+      categories,
+    );
+    expect(result.categories.map((item) => item.categoryId)).toEqual([CALM, PARTY, MELANCHOLY]);
+    expect(result.categories[1]!.reason).toBe('häufig bei Alternative Rock: 2 von 2 Songs haben „Party“');
+    expect(result.categories[2]!.reason).toMatch(/^häufig bei Rock mit ähnlichem Tempo/);
+  });
+
+  test('ohne passende Songs gibt es nichts, und der Song selbst zählt nie', () => {
+    const self = cash({ categoryIds: [MELANCHOLY], energy: 3 });
+    const other = cash({ categoryIds: [MELANCHOLY], energy: 3 });
+    expect(librarySuggestions([self, other], target({ id: self.id }), categories)).toEqual({
+      categories: [],
+      energy: null,
+      singAlong: null,
+    });
+    expect(librarySuggestions([self, other], target({ artist: 'Niemand' }), categories).categories).toEqual([]);
   });
 });

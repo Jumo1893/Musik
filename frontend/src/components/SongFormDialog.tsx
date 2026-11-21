@@ -7,13 +7,14 @@ import { extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform 
 import { sameGenres, type GenreIndex } from '../lib/genres.ts';
 import { duplicateFinder, sameSong, type Duplicate } from '../lib/songMatching.ts';
 import { addGenre, distinctGenres, genreKey } from '../lib/songs.ts';
-import { useCategories, useConfig, useDeleteSong, useGenreIndex, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
+import { librarySuggestions, type ScaleHint } from '../lib/suggestions.ts';
+import { useById, useCategories, useConfig, useDeleteSong, useGenreIndex, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
 import type { LookupResult, Song, SongInput } from '../types.ts';
 import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.tsx';
 import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
 import { OnlineSearch, type PickExtras } from './OnlineSearch.tsx';
-import { Artwork, ChipToggle, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput, SING_ALONG_LABELS } from './ui.tsx';
+import { Artwork, ChipToggle, colorProps, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput, SING_ALONG_LABELS } from './ui.tsx';
 import { useOnlineLookup } from './useOnlineLookup.ts';
 
 /** Zustand des Formulars: Texte so, wie sie in den Feldern stehen. */
@@ -425,6 +426,18 @@ function SongSummary({ form, bpmSearching, genresSearching, youtubeSearching, de
   );
 }
 
+/** Dezenter Hinweis neben einer Skala: die übliche Stufe ähnlicher Songs (setzt nichts). */
+function ScaleHintNote({ hint, labels }: { hint: ScaleHint; labels: readonly string[] }) {
+  return (
+    <span
+      className="scale-hint"
+      title={`${hint.count} von ${hint.total} ${hint.basis} haben ${hint.value} – ${labels[hint.value - 1] ?? ''}`}
+    >
+      ähnliche Songs: meist {hint.value}
+    </span>
+  );
+}
+
 /** Hinweis auf einen Song, den es in der Bibliothek schon gibt. */
 function DuplicateNote({ duplicate, editing, onOpen, onIgnore }: { duplicate: Duplicate; editing: boolean; onOpen: () => void; onIgnore: () => void }) {
   const { song } = duplicate;
@@ -487,6 +500,23 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   const genreOptions = useMemo(() => distinctGenres(songs.data ?? []), [songs.data]);
   const findDuplicate = useMemo(() => duplicateFinder(songs.data ?? [], song?.id ?? null), [songs.data, song]);
   const genreIndex = useGenreIndex();
+  const categoriesById = useById(categories.data);
+  // Vorschläge aus ähnlichen Songs der Bibliothek (gleicher Interpret, Untergenre, Hauptgenre und Tempo).
+  const suggestions = useMemo(() => {
+    const bpm = parseWholeNumber(form.bpm, 20, 400);
+    return librarySuggestions(
+      songs.data ?? [],
+      {
+        id: song?.id ?? null,
+        artist: form.artist,
+        genres: form.genres,
+        mainGenres: genreIndex.mainGenresOfAll(form.genres),
+        bpm: typeof bpm === 'number' ? bpm : null,
+      },
+      categoriesById,
+      form.categoryIds,
+    );
+  }, [songs.data, song, form.artist, form.genres, form.bpm, form.categoryIds, genreIndex, categoriesById]);
   const queryClient = useQueryClient();
   const youtubeStatus = useYoutubeStatus();
   const youtubeSearch = useMutation({
@@ -965,6 +995,29 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
           Neue Kategorie
         </button>
       </div>
+      {suggestions.categories.length > 0 && (
+        <div className="suggestion-row" role="group" aria-label="Vorschläge aus ähnlichen Songs deiner Bibliothek">
+          <span className="suggestion-label">Passt vielleicht:</span>
+          {suggestions.categories.map((suggestion) => {
+            const category = categoriesById.get(suggestion.categoryId);
+            if (!category) return null;
+            return (
+              <button
+                key={suggestion.categoryId}
+                type="button"
+                className="chip chip-suggestion"
+                {...colorProps(category.color)}
+                title={suggestion.reason}
+                aria-label={`${category.name} wählen – ${suggestion.reason}`}
+                onClick={() => toggleCategory(category.id)}
+              >
+                <Plus size={12} aria-hidden />
+                {category.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {errors.categoryIds && (
         <p className="field-error" role="alert">
           {errors.categoryIds}
@@ -986,7 +1039,9 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
         />
       </div>
       <div className="field span-3">
-        <span className="field-label">Energie</span>
+        <span className="field-label">
+          Energie {suggestions.energy && <ScaleHintNote hint={suggestions.energy} labels={ENERGY_LABELS} />}
+        </span>
         <ScaleInput
           variant="levels"
           groupLabel="Energie"
@@ -996,7 +1051,9 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
         />
       </div>
       <div className="field span-3">
-        <span className="field-label">Mitsingen</span>
+        <span className="field-label">
+          Mitsingen {suggestions.singAlong && <ScaleHintNote hint={suggestions.singAlong} labels={SING_ALONG_LABELS} />}
+        </span>
         <ScaleInput
           variant="levels"
           groupLabel="Mitsingen"
