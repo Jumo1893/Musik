@@ -1748,6 +1748,45 @@ a {
   font-weight: 600;
 }
 
+/* Auswahl zu einem eingefügten YouTube-Link */
+.link-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.link-choice-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.link-choice-head .field-hint {
+  flex: 1;
+}
+
+.link-choice-question {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.lookup-result-best {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.link-choice .link-button {
+  align-self: flex-start;
+  text-align: left;
+}
+
+.review-note {
+  color: var(--star);
+  font-weight: 600;
+}
+
 /* Hinweis auf einen Song, den es schon gibt */
 .duplicate-note {
   display: flex;

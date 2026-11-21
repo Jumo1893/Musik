@@ -173,6 +173,11 @@ export const lookupQuerySchema = z.object({
     .max(200),
 });
 
+/** Eingefügter Link zu einem Song (Apple Music, YouTube, YouTube Music). */
+export const linkQuerySchema = z.object({
+  url: z.string({ error: 'Bitte einen Link angeben.' }).trim().min(1, 'Bitte einen Link angeben.').max(2000, 'Der Link ist zu lang.'),
+});
+
 /** Angaben zum Song für die Online-Suche nach Tempo und Genres. */
 export const songLookupQuerySchema = z.object({
   title: z.string({ error: 'Bitte einen Titel angeben.' }).trim().min(1, 'Bitte einen Titel angeben.').max(300),

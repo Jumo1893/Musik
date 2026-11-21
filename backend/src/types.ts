@@ -64,6 +64,29 @@ export interface LookupResult {
   artworkUrl: string | null;
 }
 
+/** Ergebnis für einen eingefügten Link zu einem Song. */
+export type LinkLookupResult =
+  | {
+      /** Apple-Music-Link: der Song aus dem Katalog, mit bereinigtem Link */
+      kind: 'apple';
+      result: LookupResult;
+    }
+  | {
+      /** YouTube- oder YouTube-Music-Link */
+      kind: 'youtube';
+      videoId: string;
+      /** Bereinigter Link ohne Playlist- und Zeitangabe */
+      youtubeUrl: string;
+      /** null: YouTube kennt das Video nicht (gelöscht, privat) oder war nicht erreichbar */
+      video: { title: string; channel: string | null; thumbnailUrl: string | null } | null;
+      /** Aus dem Videotitel gelesen */
+      parsed: { title: string; artist: string } | null;
+      /** Katalog-Treffer, der zum Video passt („Ist es dieser?“) */
+      best: LookupResult | null;
+      /** Weitere Treffer der Katalogsuche */
+      results: LookupResult[];
+    };
+
 /** Eintrag der Genre-Liste für Auswahllisten. */
 export interface GenreInfo {
   name: string;

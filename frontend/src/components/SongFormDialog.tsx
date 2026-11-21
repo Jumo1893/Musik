@@ -5,14 +5,14 @@ import { api, ApiError, errorMessage, existingSongIdOf } from '../api.ts';
 import { formatDuration, formatLongDate, parseDuration } from '../lib/format.ts';
 import { extractYoutubeId, PLATFORMS, searchUrl, youtubeVideoUrl, type Platform } from '../lib/links.ts';
 import { sameGenres, type GenreIndex } from '../lib/genres.ts';
-import { duplicateFinder, type Duplicate } from '../lib/songMatching.ts';
+import { duplicateFinder, sameSong, type Duplicate } from '../lib/songMatching.ts';
 import { addGenre, distinctGenres, genreKey } from '../lib/songs.ts';
 import { useCategories, useConfig, useDeleteSong, useGenreIndex, useSaveSong, useSongs, useYoutubeStatus } from '../queries.ts';
 import type { LookupResult, Song, SongInput } from '../types.ts';
 import { CategoryFormDialog, suggestCategoryColor } from './CategoryFormDialog.tsx';
 import { GenrePicker } from './GenrePicker.tsx';
 import { ConfirmDialog, Modal } from './Modal.tsx';
-import { OnlineSearch } from './OnlineSearch.tsx';
+import { OnlineSearch, type PickExtras } from './OnlineSearch.tsx';
 import { Artwork, ChipToggle, ENERGY_LABELS, Field, RATING_LABELS, ScaleInput, SING_ALONG_LABELS } from './ui.tsx';
 import { useOnlineLookup } from './useOnlineLookup.ts';
 
@@ -39,6 +39,11 @@ interface FormState {
    * Song, zu dem sie gehören. Solange sie unverändert im Feld stehen, darf eine neue Suche sie ersetzen.
    */
   autoGenres: { genres: string[]; song: string } | null;
+  /**
+   * YouTube-Link, den ein eingefügter Link oder eine Suche eingetragen hat. Steht er noch
+   * unverändert im Feld, ersetzt ihn die nächste Übernahme eines anderen Songs.
+   */
+  autoYoutube: { url: string; song: { title: string; artist: string } | null } | null;
 }
 
 type Errors = Record<string, string | undefined>;
@@ -66,6 +71,7 @@ const EMPTY_FORM: FormState = {
   artworkUrl: '',
   categoryIds: [],
   autoGenres: null,
+  autoYoutube: null,
 };
 
 function formFromSong(song: Song): FormState {
@@ -87,6 +93,7 @@ function formFromSong(song: Song): FormState {
     artworkUrl: song.artworkUrl ?? '',
     categoryIds: song.categoryIds,
     autoGenres: null,
+    autoYoutube: null,
   };
 }
 
@@ -130,8 +137,17 @@ function genresReplaceable(form: FormState): boolean {
   return form.genres.length === 0 || (form.autoGenres !== null && sameGenres(form.genres, form.autoGenres.genres));
 }
 
+/**
+ * Der YouTube-Link stammt aus einem eingefügten Link oder einer Suche, ist unverändert und
+ * gehört zu einem anderen Song als dem übernommenen – dann muss er weichen.
+ */
+function autoYoutubeOutdated(form: FormState, result: { title: string; artist: string }): boolean {
+  const auto = form.autoYoutube;
+  return auto !== null && form.youtubeUrl === auto.url && auto.song !== null && !sameSong(auto.song, result);
+}
+
 /** Übernimmt einen Treffer der Online-Suche; was der Treffer nicht kennt, bleibt wie es ist. */
-function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreIndex): FormState {
+function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreIndex, extras: PickExtras = {}): FormState {
   // iTunes nennt ein grobes Genre („Hip-Hop/Rap“); es kommt in der Schreibweise der Genre-Liste.
   const genre = result.genre ? genreIndex.canonical(result.genre) : null;
   const song = songKey(result.artist, result.title);
@@ -156,6 +172,14 @@ function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreInd
     genres,
     autoGenres,
     appleMusicUrl: result.appleMusicUrl ?? form.appleMusicUrl,
+    // Ein eingefügter YouTube-Link kommt in jedem Fall ins YouTube-Feld; einer, der automatisch
+    // für einen anderen Song eingetragen wurde, muss weichen.
+    youtubeUrl: extras.youtubeUrl ?? (autoYoutubeOutdated(form, result) ? '' : form.youtubeUrl),
+    autoYoutube: extras.youtubeUrl
+      ? { url: extras.youtubeUrl, song: { title: result.title, artist: result.artist } }
+      : autoYoutubeOutdated(form, result)
+        ? null
+        : form.autoYoutube,
     artworkUrl: result.artworkUrl ?? form.artworkUrl,
   };
 }
@@ -445,6 +469,8 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  /** Titel und Interpret stammen aus einem Videotitel und sollten geprüft werden. */
+  const [fromVideo, setFromVideo] = useState(false);
 
   const categories = useCategories();
   const songs = useSongs();
@@ -545,6 +571,7 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
           setDetailsOpen(false);
           setLinksOpen(false);
           setNotesOpen(false);
+          setFromVideo(false);
           setSavedNote(`„${saved.title}“ ist gespeichert.`);
         },
         onError: (err) => {
@@ -735,29 +762,41 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
 
   // --- Bausteine des Formulars ---------------------------------------------------
 
+  const videoHint = fromVideo ? (
+    <span className="review-note" role="status">
+      Aus dem Videotitel gelesen – bitte prüfen
+    </span>
+  ) : undefined;
+
   const detailFields = (
     <div className="form-grid">
-      <Field label="Titel" htmlFor={`${id}-title`} error={errors.title} className="span-3">
+      <Field label="Titel" htmlFor={`${id}-title`} error={errors.title} hint={videoHint} className="span-3">
         <input
           id={`${id}-title`}
           className="input"
           value={form.title}
           maxLength={300}
           data-autofocus={song ? true : undefined}
-          onChange={(event) => set('title', event.target.value)}
+          onChange={(event) => {
+            set('title', event.target.value);
+            setFromVideo(false);
+          }}
           onBlur={() => {
             lookUpOnline(form);
             checkDuplicate(form);
           }}
         />
       </Field>
-      <Field label="Interpret" htmlFor={`${id}-artist`} error={errors.artist} className="span-3">
+      <Field label="Interpret" htmlFor={`${id}-artist`} error={errors.artist} hint={videoHint} className="span-3">
         <input
           id={`${id}-artist`}
           className="input"
           value={form.artist}
           maxLength={300}
-          onChange={(event) => set('artist', event.target.value)}
+          onChange={(event) => {
+            set('artist', event.target.value);
+            setFromVideo(false);
+          }}
           onBlur={() => {
             lookUpOnline(form);
             checkDuplicate(form);
@@ -1070,15 +1109,23 @@ function SongForm({ song, onClose, onOpenSong }: SongFormProps) {
             key={searchKey}
             autoFocus={!song}
             findDuplicate={(result) => findDuplicate({ title: result.title, artist: result.artist, appleMusicUrl: result.appleMusicUrl })}
-            onPick={(result) => {
-              const next = applyLookup(form, result, genreIndex);
-              setForm((current) => applyLookup(current, result, genreIndex));
+            onPick={(result, extras) => {
+              const next = applyLookup(form, result, genreIndex, extras);
+              setForm((current) => applyLookup(current, result, genreIndex, extras));
               lookUpOnline(next);
               checkDuplicate(next);
               // Beim Anlegen steht danach das Persönliche im Mittelpunkt; beim Bearbeiten bleibt das ganze Formular.
               if (!song) setQuick(true);
+              // Aus einem Videotitel Gelesenes soll man sehen und prüfen können.
+              setFromVideo(Boolean(extras?.fromVideo));
+              if (extras?.fromVideo) setDetailsOpen(true);
               setErrors({});
               setFormError(null);
+              setSavedNote(null);
+            }}
+            onYoutubeLink={(youtubeUrl, video) => {
+              setForm((current) => ({ ...current, youtubeUrl, autoYoutube: { url: youtubeUrl, song: video } }));
+              checkDuplicate({ ...form, youtubeUrl });
               setSavedNote(null);
             }}
           />

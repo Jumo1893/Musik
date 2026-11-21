@@ -1,14 +1,16 @@
 import { Router } from 'express';
 import type { Pool } from '../db.ts';
-import { lookupQuerySchema, songLookupQuerySchema } from '../schemas.ts';
+import { linkQuerySchema, lookupQuerySchema, songLookupQuerySchema } from '../schemas.ts';
 import type { GenreLookupService } from '../services/genreLookup.ts';
 import { searchItunes } from '../services/itunes.ts';
+import type { LinkLookupService } from '../services/linkLookup.ts';
 import type { SongBpmService } from '../services/songBpm.ts';
 
 export interface LookupServices {
   itunesCountry: string;
   songBpm: SongBpmService;
   genreLookup: GenreLookupService;
+  linkLookup: LinkLookupService;
 }
 
 export function lookupRouter(pool: Pool, services: LookupServices): Router {
@@ -18,6 +20,12 @@ export function lookupRouter(pool: Pool, services: LookupServices): Router {
   router.get('/itunes', async (req, res) => {
     const { term } = lookupQuerySchema.parse(req.query);
     res.json(await searchItunes(term, services.itunesCountry));
+  });
+
+  // GET /api/lookup/link?url=… – erkennt einen Song an seinem Link (Apple Music, YouTube, YouTube Music).
+  router.get('/link', async (req, res) => {
+    const { url } = linkQuerySchema.parse(req.query);
+    res.json(await services.linkLookup.lookup(url));
   });
 
   // GET /api/lookup/bpm?title=…&artist=…&duration=… – sucht das Tempo auf songbpm.com.

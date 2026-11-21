@@ -109,6 +109,24 @@ export interface LookupResult {
   artworkUrl: string | null;
 }
 
+/** Ergebnis für einen eingefügten Link zu einem Song. */
+export type LinkLookupResult =
+  | { kind: 'apple'; result: LookupResult }
+  | {
+      kind: 'youtube';
+      videoId: string;
+      /** Bereinigter Link ohne Playlist- und Zeitangabe */
+      youtubeUrl: string;
+      /** null: YouTube kennt das Video nicht (gelöscht, privat) oder war nicht erreichbar */
+      video: { title: string; channel: string | null; thumbnailUrl: string | null } | null;
+      /** Aus dem Videotitel gelesen */
+      parsed: { title: string; artist: string } | null;
+      /** Katalog-Treffer, der zum Video passt */
+      best: LookupResult | null;
+      /** Weitere Treffer der Katalogsuche */
+      results: LookupResult[];
+    };
+
 /** Eintrag der Genre-Liste: Hauptgenre wie Rock oder Untergenre wie Alternative Rock. */
 export interface GenreInfo {
   name: string;

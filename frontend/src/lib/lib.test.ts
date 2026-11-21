@@ -11,7 +11,15 @@ import {
   type GenreTreeMainRow,
   type GenreTreeOptions,
 } from './genres.ts';
-import { extractAppleTrackId, extractYoutubeId, searchUrl, streamingLinks, youtubeQueueUrl, YOUTUBE_QUEUE_LIMIT } from './links.ts';
+import {
+  extractAppleTrackId,
+  extractYoutubeId,
+  looksLikeLink,
+  searchUrl,
+  streamingLinks,
+  youtubeQueueUrl,
+  YOUTUBE_QUEUE_LIMIT,
+} from './links.ts';
 import { duplicateFinder } from './songMatching.ts';
 import {
   addGenre,
@@ -607,5 +615,15 @@ describe('Dubletten', () => {
   test('der bearbeitete Song ist nicht seine eigene Dublette', () => {
     const whileEditing = duplicateFinder([hurt, live], hurt.id);
     expect(whileEditing({ title: 'Hurt', artist: 'Johnny Cash', youtubeUrl: hurt.youtubeUrl })).toBeNull();
+  });
+});
+
+describe('Links im Suchfeld', () => {
+  test('looksLikeLink unterscheidet Links von Suchbegriffen', () => {
+    expect(looksLikeLink('https://music.apple.com/de/song/hurt/1440811605')).toBe(true);
+    expect(looksLikeLink(' youtu.be/8AHCfZTRGiI ')).toBe(true);
+    expect(looksLikeLink('music.youtube.com/watch?v=8AHCfZTRGiI')).toBe(true);
+    expect(looksLikeLink('Hurt Johnny Cash')).toBe(false);
+    expect(looksLikeLink('https://example.org/x y')).toBe(false);
   });
 });

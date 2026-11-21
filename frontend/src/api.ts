@@ -17,6 +17,7 @@ import type {
   CategoryInput,
   GeneratorCriteria,
   GeneratorResult,
+  LinkLookupResult,
   LookupResult,
   Playlist,
   PlaylistInput,
@@ -176,6 +177,9 @@ export const api = {
   },
   lookup: (term: string, signal?: AbortSignal) =>
     request<LookupResult[]>('GET', `/lookup/itunes?term=${encodeURIComponent(term)}`, undefined, signal),
+  /** Song an seinem Link erkennen (Apple Music, YouTube, YouTube Music). */
+  lookupLink: (url: string, signal?: AbortSignal) =>
+    request<LinkLookupResult>('GET', `/lookup/link?url=${encodeURIComponent(url)}`, undefined, signal),
   /** Tempo auf songbpm.com; match ist null, wenn der Song dort unbekannt ist. */
   lookupBpm: (song: SongLookupQuery, signal?: AbortSignal) =>
     request<{ match: BpmMatch | null }>('GET', `/lookup/bpm?${songLookupParams(song)}`, undefined, signal),

@@ -9,6 +9,7 @@ import { songsRouter } from './routes/songs.ts';
 import { statsRouter } from './routes/stats.ts';
 import { youtubeRouter } from './routes/youtube.ts';
 import type { GenreLookupService } from './services/genreLookup.ts';
+import type { LinkLookupService } from './services/linkLookup.ts';
 import type { SongBpmService } from './services/songBpm.ts';
 import type { YoutubeService } from './services/youtube.ts';
 
@@ -19,6 +20,8 @@ export interface AppOptions {
   songBpm: SongBpmService;
   /** Genre-Suche auf MusicBrainz */
   genreLookup: GenreLookupService;
+  /** Songs an ihrem Link erkennen (Apple Music, YouTube) */
+  linkLookup: LinkLookupService;
   /** Erlaubte Host-Namen; null: keine Prüfung */
   allowedHosts: readonly string[] | null;
 }

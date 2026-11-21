@@ -3,6 +3,7 @@ import { config } from './config.ts';
 import { createPool, waitForDatabase } from './db.ts';
 import { migrate } from './migrate.ts';
 import { GenreLookupService } from './services/genreLookup.ts';
+import { LinkLookupService } from './services/linkLookup.ts';
 import { SongBpmService } from './services/songBpm.ts';
 import { YoutubeService } from './services/youtube.ts';
 
@@ -31,6 +32,7 @@ const app = createApp(pool, {
   youtube,
   songBpm: new SongBpmService(),
   genreLookup: new GenreLookupService(),
+  linkLookup: new LinkLookupService({ itunesCountry: config.itunesCountry }),
   allowedHosts: config.allowedHosts,
 });
 const server = app.listen(config.port, () => {

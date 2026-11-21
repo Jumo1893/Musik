@@ -7,6 +7,7 @@ import { HttpError } from '../errors.ts';
 import type { LookupResult } from '../types.ts';
 
 const SEARCH_URL = 'https://itunes.apple.com/search';
+const LOOKUP_URL = 'https://itunes.apple.com/lookup';
 const TIMEOUT_MS = 8000;
 const MAX_RESULTS = 12;
 
@@ -72,7 +73,27 @@ export async function searchItunes(
   url.searchParams.set('entity', 'song');
   url.searchParams.set('country', country);
   url.searchParams.set('limit', String(MAX_RESULTS));
+  return fetchTracks(url, fetchFn);
+}
 
+/** Höchstens so viele IDs nimmt eine Abfrage an. */
+const MAX_LOOKUP_IDS = 100;
+
+/** Songs nach ihrer Track-ID (aus einem Apple-Music-Link); unbekannte IDs fehlen im Ergebnis. */
+export async function lookupItunes(
+  trackIds: readonly string[],
+  country: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<LookupResult[]> {
+  const ids = trackIds.filter((id) => /^\d{1,15}$/.test(id)).slice(0, MAX_LOOKUP_IDS);
+  if (ids.length === 0) return [];
+  const url = new URL(LOOKUP_URL);
+  url.searchParams.set('id', ids.join(','));
+  url.searchParams.set('country', country);
+  return fetchTracks(url, fetchFn);
+}
+
+async function fetchTracks(url: URL, fetchFn: typeof fetch): Promise<LookupResult[]> {
   let body: unknown;
   try {
     const response = await fetchFn(url, {

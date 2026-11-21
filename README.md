@@ -39,7 +39,7 @@ Danach läuft die App unter <http://localhost:8090>. Mit `docker compose` funkti
 
 ## Erste Schritte
 
-1. **Songs → Song hinzufügen**: Titel und Interpret ins Suchfeld tippen, Treffer anklicken, Kategorien, Bewertung und Energie wählen, speichern. „Speichern & weiterer Song“ hält den Dialog für den nächsten Song offen.
+1. **Songs → Song hinzufügen**: Titel und Interpret ins Suchfeld tippen oder einen Link aus Apple Music, YouTube oder YouTube Music einfügen („Teilen → Link kopieren“), Treffer anklicken. Danach fasst eine Karte die Angaben zusammen; es bleiben nur Kategorien, Bewertung, Energie und Mitsingen. Strg+Enter speichert, „Speichern & weiterer Song“ (Strg+Umschalt+Enter) hält den Dialog für den nächsten Song offen. Ist ein Song schon in der Bibliothek, sagt der Dialog das schon in der Trefferliste.
 2. Für YouTube den Link zum Video einfügen. Ohne verbundenes Konto öffnet der Knopf „Suchen“ neben dem Feld die passende Suche zum Kopieren; mit verbundenem Konto zeigt er die Treffer direkt im Dialog.
 3. **Playlists → Playlist erzeugen**: Kategorien und Wunschdauer wählen, Vorschlag prüfen, speichern.
 4. **Auswertung** zeigt, wie sich die Bibliothek zusammensetzt. Je vollständiger Kategorien, Bewertung und Energie gepflegt sind, desto treffsicherer wird der Generator.
@@ -246,6 +246,7 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 | `POST`, `DELETE /api/playlists/:id/youtube` | Playlist ins YouTube-Konto übertragen (läuft im Hintergrund) bzw. Verknüpfung lösen |
 | `GET /api/stats` | Kennzahlen für die Auswertung |
 | `GET /api/lookup/itunes?term=…` | Songsuche im iTunes-Katalog |
+| `GET /api/lookup/link?url=…` | Song an seinem Link erkennen: Apple Music über die Track-ID, YouTube und YouTube Music über Titel und Kanal des Videos samt Katalogsuche |
 | `GET /api/lookup/bpm?title=…&artist=…&duration=…` | Tempo auf songbpm.com (`{ "match": null }`, wenn unbekannt) |
 | `GET /api/lookup/genres?title=…&artist=…&duration=…` | Genres auf MusicBrainz (`{ "match": null }`, wenn unbekannt) |
 | `GET /api/genres` | Haupt- und Untergenres der Genre-Liste samt eigenen Genres der Bibliothek; `featuredIn` nennt die Hauptgenres, in deren kurzer Liste ein Untergenre steht |
@@ -261,6 +262,7 @@ Eine neue Datei in `backend/migrations/` anlegen, zum Beispiel `004_meine_aender
 ## Was nach außen geht
 
 - Die Online-Suche schickt den eingetippten Suchbegriff an die iTunes Search API von Apple.
+- Ein ins Suchfeld eingefügter Link geht je nach Plattform weiter: Bei Apple Music fragt das Backend die Track-ID bei der iTunes Search API ab, bei YouTube und YouTube Music schickt es den Link zum Video an die oEmbed-Schnittstelle von YouTube (liefert Titel und Kanal, ohne Konto und ohne Kontingent) und sucht danach mit Interpret und Titel im iTunes-Katalog.
 - Für die Genres schickt das Backend Interpret und Titel an die Suche von MusicBrainz (öffentliche Web-API ohne Schlüssel, höchstens eine Anfrage pro Sekunde) – beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs.
 - Für das Tempo schickt das Backend Interpret und Titel an die Suche von songbpm.com – ebenfalls beim Anlegen im Song-Dialog und für neu übernommene YouTube-Songs. songbpm.com hat keine offizielle Schnittstelle; ausgewertet wird die Ergebnisseite. Ändert die Seite ihren Aufbau, findet die App kein Tempo mehr, alles andere funktioniert weiter.
 - Cover werden beim Anzeigen direkt von der gespeicherten Bildadresse geladen (bei Treffern aus der Online-Suche von Apple, bei übernommenen Videos von YouTube).

@@ -17,6 +17,7 @@ import { config } from './config.ts';
 import { createPool, type Pool } from './db.ts';
 import { MIGRATIONS_DIR, migrate } from './migrate.ts';
 import { GenreLookupService } from './services/genreLookup.ts';
+import { LinkLookupService } from './services/linkLookup.ts';
 import { SongBpmService } from './services/songBpm.ts';
 import { YoutubeService } from './services/youtube.ts';
 import { FakeGoogle } from './testing/fakeGoogle.ts';
@@ -117,6 +118,22 @@ describe('API', { skip: unavailable ?? false }, () => {
       return Response.json({ recordings });
     }) as typeof fetch,
   });
+  /** Nachgebautes iTunes und YouTube-oEmbed für eingefügte Links. */
+  const linkLookup = new LinkLookupService({
+    itunesCountry: 'de',
+    fetchFn: (async (input: unknown) => {
+      const url = new URL(String(input));
+      const hurt = {
+        trackName: 'Hurt',
+        artistName: 'Johnny Cash',
+        collectionName: 'American IV: The Man Comes Around',
+        trackViewUrl: 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605&uo=4',
+      };
+      if (url.pathname === '/oembed') return Response.json({ title: 'Johnny Cash - Hurt', author_name: 'Johnny Cash' });
+      if (url.pathname === '/lookup') return Response.json({ results: url.searchParams.get('id') === '1440811605' ? [hurt] : [] });
+      return Response.json({ results: [hurt] });
+    }) as typeof fetch,
+  });
   const REDIRECT_URI = 'http://localhost:8090/api/youtube/callback';
 
   // Kategorien, die vor jedem Test frisch angelegt werden (IDs 1 bis 3).
@@ -162,6 +179,7 @@ describe('API', { skip: unavailable ?? false }, () => {
       youtube,
       songBpm,
       genreLookup,
+      linkLookup,
       allowedHosts: ['localhost', '127.0.0.1', '[::1]'],
     });
     server = app.listen(0, '127.0.0.1');
@@ -828,6 +846,26 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(response.status, 400);
       assert.equal(response.body.fields.term, 'Bitte einen Suchbegriff angeben.');
       assert.equal((await api('GET', '/api/lookup/itunes?term=a')).status, 400);
+    });
+
+    test('erkennt einen Song an seinem Link', async () => {
+      const link = (url: string) => api('GET', `/api/lookup/link?url=${encodeURIComponent(url)}`);
+
+      const apple = await link('https://music.apple.com/de/album/hurt/1440811595?i=1440811605');
+      assert.equal(apple.status, 200);
+      assert.equal(apple.body.kind, 'apple');
+      assert.equal(apple.body.result.appleMusicUrl, 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605');
+
+      const youtube = await link('https://youtu.be/8AHCfZTRGiI?t=3');
+      assert.equal(youtube.status, 200);
+      assert.equal(youtube.body.youtubeUrl, 'https://www.youtube.com/watch?v=8AHCfZTRGiI');
+      assert.deepEqual(youtube.body.parsed, { title: 'Hurt', artist: 'Johnny Cash' });
+      assert.equal(youtube.body.best.title, 'Hurt');
+
+      const unknown = await link('https://open.spotify.com/track/abc');
+      assert.equal(unknown.status, 400);
+      assert.equal(unknown.body.code, 'link_unknown');
+      assert.equal((await api('GET', '/api/lookup/link')).body.fields.url, 'Bitte einen Link angeben.');
     });
 
     test('findet das Tempo eines Songs auf songbpm.com', async () => {

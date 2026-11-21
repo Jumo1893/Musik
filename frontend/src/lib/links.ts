@@ -68,6 +68,15 @@ export function extractAppleTrackId(link: string | null | undefined): string | n
   return /\/song\/(?:[^/]+\/)?(\d{1,15})\/?$/.exec(url.pathname)?.[1] ?? null;
 }
 
+/**
+ * Sieht die Eingabe wie ein Link aus (statt wie ein Suchbegriff)? Dann versucht das Suchfeld,
+ * den Song am Link zu erkennen.
+ */
+export function looksLikeLink(text: string): boolean {
+  const trimmed = text.trim();
+  return /^https?:\/\/\S+$/i.test(trimmed) || /^(www\.|m\.)?(music\.apple\.com|youtube\.com|music\.youtube\.com|youtu\.be)\/\S*$/i.test(trimmed);
+}
+
 /** Video-ID eines Songs, egal in welchem der beiden YouTube-Felder der Link steht. */
 export function youtubeIdOf(song: Pick<Song, 'youtubeUrl' | 'youtubeMusicUrl'>): string | null {
   return extractYoutubeId(song.youtubeUrl) ?? extractYoutubeId(song.youtubeMusicUrl);
