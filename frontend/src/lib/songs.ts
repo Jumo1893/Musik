@@ -137,6 +137,8 @@ export const SONG_CSV_HEADER = [
   'YouTube',
   'YouTube Music',
   'Notizen',
+  'Tonart',
+  'Explicit',
 ];
 
 export function songCsvRow(song: Song, categories: Map<number, Category>): CsvCell[] {
@@ -162,5 +164,7 @@ export function songCsvRow(song: Song, categories: Map<number, Category>): CsvCe
     song.youtubeUrl,
     song.youtubeMusicUrl,
     song.notes,
+    song.musicalKey,
+    song.explicit === null ? null : song.explicit ? 'ja' : 'nein',
   ];
 }

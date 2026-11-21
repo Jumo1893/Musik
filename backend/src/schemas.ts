@@ -104,6 +104,11 @@ export const songInputSchema = z.object({
   releaseYear: optionalInt(1000, 2200),
   genres: genreList,
   bpm: optionalInt(20, 400),
+  musicalKey: optionalText(20),
+  explicit: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? null),
   energy: optionalInt(1, 5),
   singAlong: optionalInt(1, 5),
   rating: optionalInt(1, 5),
@@ -153,6 +158,8 @@ export const generatorCriteriaSchema = z.object({
   singAlongMax: optionalInt(1, 5),
   yearFrom: optionalInt(1000, 2200),
   yearTo: optionalInt(1000, 2200),
+  /** Songs mit explizitem Text weglassen (unbekannte bleiben dabei). */
+  excludeExplicit: z.boolean().default(false),
   targetMinutes: optionalInt(1, 1440),
   maxSongs: optionalInt(1, 1000),
   maxPerArtist: optionalInt(1, 100),

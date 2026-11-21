@@ -25,6 +25,7 @@ function song(overrides: Partial<GeneratorSong> = {}): GeneratorSong {
     energy: 3,
     singAlong: 3,
     rating: 3,
+    explicit: null,
     categoryIds: [],
     ...overrides,
   };
@@ -147,6 +148,14 @@ describe('Filter', () => {
     assert.deepEqual(ids(pick(all, { singAlongMax: 2 })), ids([listen, hum]));
     assert.deepEqual(ids(pick(all, { singAlongMin: 5, singAlongMax: 2 })), ids([hum, chorus, loud]), 'vertauschte Grenzen');
     assert.deepEqual(ids(pick(all, { singAlongMin: 4, energyMax: 2 })), [], 'beide Skalen gelten zugleich');
+  });
+
+  test('„ohne explizite Texte“ lässt nur bekannt explizite Songs weg', () => {
+    const clean = song({ explicit: false });
+    const rude = song({ explicit: true });
+    const unknown = song({ explicit: null });
+    assert.deepEqual(ids(pick([clean, rude, unknown], { excludeExplicit: true })), ids([clean, unknown]));
+    assert.deepEqual(ids(pick([clean, rude, unknown])), ids([clean, rude, unknown]), 'ohne Option bleiben alle');
   });
 
   test('vertauschte Bereichsgrenzen werden verziehen', () => {

@@ -214,6 +214,7 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
         : songs.filter((song) => song.singAlong === null).length,
     year:
       criteria.yearFrom === null && criteria.yearTo === null ? 0 : songs.filter((song) => song.releaseYear === null).length,
+    explicit: songs.filter((song) => song.explicit === null).length,
   };
   const missingNote = (count: number, what: string) =>
     count > 0 ? (
@@ -402,6 +403,22 @@ function Generator({ initial, songs, categories }: GeneratorProps) {
               onChange={(minRating) => update({ minRating })}
             />
             {missingNote(missing.rating, 'Bewertung')}
+          </fieldset>
+
+          <fieldset className="form-section">
+            <legend>Texte</legend>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={criteria.excludeExplicit}
+                onChange={(event) => update({ excludeExplicit: event.target.checked })}
+              />
+              Ohne explizite Texte
+            </label>
+            <p className="field-hint">
+              Etwa für Familienfeiern oder das Büro. Songs ohne Angabe bleiben dabei
+              {criteria.excludeExplicit && missing.explicit > 0 ? ` (${formatSongCount(missing.explicit)})` : ''}.
+            </p>
           </fieldset>
 
           <fieldset className="form-section">

@@ -336,6 +336,8 @@ describe('API', { skip: unavailable ?? false }, () => {
         releaseYear: 2002,
         genres: ['Country', ' Folk ', 'country'],
         bpm: 90,
+        musicalKey: ' C♯/D♭ ',
+        explicit: false,
         energy: 2,
         singAlong: 4,
         rating: 5,
@@ -355,6 +357,8 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(created.rating, 5);
       assert.equal(created.energy, 2);
       assert.equal(created.singAlong, 4);
+      assert.equal(created.musicalKey, 'C♯/D♭');
+      assert.equal(created.explicit, false);
       assert.ok(!Number.isNaN(Date.parse(created.createdAt)));
 
       const fetched = await api('GET', `/api/songs/${created.id}`);
@@ -367,6 +371,8 @@ describe('API', { skip: unavailable ?? false }, () => {
       assert.equal(created.album, null);
       assert.equal(created.durationSeconds, null);
       assert.equal(created.youtubeUrl, null);
+      assert.equal(created.musicalKey, null);
+      assert.equal(created.explicit, null, 'unbekannt, solange nichts angegeben ist');
       assert.deepEqual(created.categoryIds, []);
     });
 
@@ -1317,6 +1323,10 @@ describe('API', { skip: unavailable ?? false }, () => {
         ((await api('GET', '/api/songs')).body as Json[]).map((song) => [song.title, song.bpm]),
       );
       assert.equal(afterwards.get('Never Gonna Give You Up'), 113);
+      // Die Tonart kommt mit dem Tempo.
+      const keys = new Map<string, Json>(((await api('GET', '/api/songs')).body as Json[]).map((song) => [song.title, song.musicalKey]));
+      assert.equal(keys.get('Never Gonna Give You Up'), 'A');
+      assert.equal(keys.get('Hello'), null);
       assert.equal(afterwards.get('Shape of You'), 96);
       assert.equal(afterwards.get('Hello'), null);
       // Gesucht wird nur für neue Songs (eine frühere Suche kann schon im Zwischenspeicher liegen).

@@ -548,12 +548,17 @@ a {
   grid-column: span 3;
 }
 
+.span-4 {
+  grid-column: span 4;
+}
+
 .span-6 {
   grid-column: span 6;
 }
 
 @media (max-width: 560px) {
-  .span-3 {
+  .span-3,
+  .span-4 {
     grid-column: span 6;
   }
 }
@@ -3404,4 +3409,16 @@ code {
 .song-form:focus,
 .song-summary:focus:not(:focus-visible) {
   outline: none;
+}
+
+/* Kennzeichen „Explicit“ auf der Karte der Schnellerfassung */
+.explicit-badge {
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }

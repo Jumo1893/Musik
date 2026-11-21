@@ -46,6 +46,7 @@ function resultFromVideo(found: YoutubeLink): LookupResult | null {
     appleMusicUrl: null,
     artworkUrl: found.video?.thumbnailUrl ?? null,
     previewUrl: null,
+    explicit: null,
   };
 }
 

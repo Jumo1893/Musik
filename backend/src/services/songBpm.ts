@@ -204,7 +204,7 @@ export class SongBpmService {
   }
 
   /**
-   * Trägt im Hintergrund das Tempo der angegebenen Songs nach, soweit sie noch keins haben.
+   * Trägt im Hintergrund Tempo und Tonart der angegebenen Songs nach, soweit sie noch keine haben.
    * Die Songs werden nacheinander und mit Pausen abgefragt.
    */
   fillMissing(db: Queryable, songIds: readonly number[]): void {
@@ -218,14 +218,20 @@ export class SongBpmService {
 
   async #fillOne(db: Queryable, songId: number): Promise<boolean> {
     const { rows } = await db.query<{ title: string; artist: string; duration_seconds: number | null }>(
-      'SELECT title, artist, duration_seconds FROM songs WHERE id = $1 AND bpm IS NULL',
+      'SELECT title, artist, duration_seconds FROM songs WHERE id = $1 AND (bpm IS NULL OR musical_key IS NULL)',
       [songId],
     );
     const song = rows[0];
     if (!song) return false;
     const match = await this.lookup({ title: song.title, artist: song.artist, durationSeconds: song.duration_seconds });
-    // Hat inzwischen jemand ein Tempo eingetragen, bleibt es.
-    if (match) await db.query('UPDATE songs SET bpm = $1, updated_at = now() WHERE id = $2 AND bpm IS NULL', [match.bpm, songId]);
+    // Hat inzwischen jemand Tempo oder Tonart eingetragen, bleiben sie.
+    if (match) {
+      await db.query(
+        `UPDATE songs SET bpm = COALESCE(bpm, $1), musical_key = COALESCE(musical_key, $2), updated_at = now()
+          WHERE id = $3 AND (bpm IS NULL OR musical_key IS NULL)`,
+        [match.bpm, match.key, songId],
+      );
+    }
     return true;
   }
 }

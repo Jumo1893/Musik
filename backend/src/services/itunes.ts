@@ -21,6 +21,7 @@ const trackSchema = z.object({
   trackViewUrl: z.string().nullish(),
   artworkUrl100: z.string().nullish(),
   previewUrl: z.string().nullish(),
+  trackExplicitness: z.string().nullish(),
 });
 
 const responseSchema = z.object({ results: z.array(z.unknown()) });
@@ -62,6 +63,14 @@ export function mapItunesTrack(raw: unknown): LookupResult | null {
     artworkUrl,
     // 30 Sekunden zum Reinhören, direkt von Apple; gespeichert wird davon nichts.
     previewUrl: httpsUrlOrNull(track.previewUrl)?.toString() ?? null,
+    // „cleaned“ ist die entschärfte Fassung eines expliziten Songs. Die Suche liefert bei
+    // expliziten Songs meist nur sie; das Original (etwa bei YouTube) ist explizit, also zählt sie so.
+    explicit:
+      track.trackExplicitness === 'explicit' || track.trackExplicitness === 'cleaned'
+        ? true
+        : track.trackExplicitness === 'notExplicit'
+          ? false
+          : null,
   };
 }
 

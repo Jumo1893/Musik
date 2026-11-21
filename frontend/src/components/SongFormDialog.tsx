@@ -27,6 +27,9 @@ interface FormState {
   releaseYear: string;
   genres: string[];
   bpm: string;
+  musicalKey: string;
+  /** Text explizit; null: unbekannt */
+  explicit: boolean | null;
   energy: number | null;
   singAlong: number | null;
   rating: number | null;
@@ -57,7 +60,14 @@ interface FormState {
 type Errors = Record<string, string | undefined>;
 
 /** Felder, die die Schnellerfassung hinter der Karte zusammenfasst … */
-const DETAIL_FIELDS = ['title', 'artist', 'album', 'genres', 'duration', 'releaseYear', 'bpm'] as const;
+const DETAIL_FIELDS = ['title', 'artist', 'album', 'genres', 'duration', 'releaseYear', 'bpm', 'musicalKey'] as const;
+
+/** Auswahl für „Text explizit?“ */
+const EXPLICIT_OPTIONS: Array<{ value: boolean | null; label: string }> = [
+  { value: false, label: 'nicht explizit' },
+  { value: true, label: 'explizit' },
+  { value: null, label: 'unbekannt' },
+];
 /** … und die im eingeklappten Bereich „Links & Cover“ stehen. */
 const LINK_FIELDS = ['appleMusicUrl', 'youtubeUrl', 'youtubeMusicUrl', 'artworkUrl'] as const;
 
@@ -69,6 +79,8 @@ const EMPTY_FORM: FormState = {
   releaseYear: '',
   genres: [],
   bpm: '',
+  musicalKey: '',
+  explicit: null,
   energy: null,
   singAlong: null,
   rating: null,
@@ -94,6 +106,8 @@ function formFromSong(song: Song): FormState {
     releaseYear: song.releaseYear === null ? '' : String(song.releaseYear),
     genres: song.genres,
     bpm: song.bpm === null ? '' : String(song.bpm),
+    musicalKey: song.musicalKey ?? '',
+    explicit: song.explicit,
     energy: song.energy,
     singAlong: song.singAlong,
     rating: song.rating,
@@ -135,9 +149,10 @@ function sameForm(a: FormState, b: FormState): boolean {
   return (
     samePersonalInput(a, b) &&
     sameGenres(a.genres, b.genres) &&
-    (['title', 'artist', 'album', 'duration', 'releaseYear', 'bpm', 'appleMusicUrl', 'youtubeUrl', 'youtubeMusicUrl', 'artworkUrl'] as const).every(
-      (key) => sameText(a[key], b[key]),
-    )
+    a.explicit === b.explicit &&
+    (
+      ['title', 'artist', 'album', 'duration', 'releaseYear', 'bpm', 'musicalKey', 'appleMusicUrl', 'youtubeUrl', 'youtubeMusicUrl', 'artworkUrl'] as const
+    ).every((key) => sameText(a[key], b[key]))
   );
 }
 
@@ -186,6 +201,8 @@ function applyLookup(form: FormState, result: LookupResult, genreIndex: GenreInd
     hitYear: result.releaseYear === null ? form.hitYear : String(result.releaseYear),
     firstYear: null,
     previewUrl: result.previewUrl ?? '',
+    // Was Apple über den Text weiß, gilt; weiß es nichts, bleibt die bisherige Angabe.
+    explicit: result.explicit ?? form.explicit,
     genres,
     autoGenres,
     appleMusicUrl: result.appleMusicUrl ?? form.appleMusicUrl,
@@ -254,6 +271,8 @@ function validate(form: FormState): { input: SongInput | null; errors: Errors } 
       releaseYear,
       genres: form.genres,
       bpm,
+      musicalKey: textOrNull(form.musicalKey),
+      explicit: form.explicit,
       energy: form.energy,
       singAlong: form.singAlong,
       rating: form.rating,
@@ -443,6 +462,8 @@ function SongSummary({
             Tempo{' '}
             {bpmSearching ? <span className="searching-note">sucht …</span> : form.bpm.trim() ? `${form.bpm.trim()} BPM` : '–'}
           </span>
+          {form.musicalKey.trim() && <span>Tonart {form.musicalKey.trim()}</span>}
+          {form.explicit === true && <span className="explicit-badge">Explicit</span>}
         </div>
         <div className="song-summary-genres">
           {genresSearching ? (
@@ -719,29 +740,42 @@ function SongForm({ song, onClose, onOpenSong, initialSearch, onSaved }: SongFor
 
   const query = `${form.artist} ${form.title}`.trim();
 
-  // Wert im BPM-Feld, der aus der Tempo-Suche stammt und noch nicht verändert wurde.
-  const bpmFromLookup = bpmLookup.state.status === 'found' ? String(bpmLookup.state.match.bpm) : null;
+  // Werte im BPM- und Tonart-Feld, die aus der Tempo-Suche stammen und noch nicht verändert wurden.
+  const bpmMatch = bpmLookup.state.status === 'found' ? bpmLookup.state.match : null;
+  const bpmFromLookup = bpmMatch ? String(bpmMatch.bpm) : null;
+  const keyFromLookup = bpmMatch?.key ?? null;
 
   /**
-   * Schlägt das Tempo auf songbpm.com nach, sobald Titel und Interpret feststehen. Ein selbst
-   * eingetragenes Tempo bleibt unangetastet; nur ein leeres Feld oder der Wert einer früheren
-   * Suche wird ersetzt.
+   * Schlägt Tempo und Tonart auf songbpm.com nach, sobald Titel und Interpret feststehen. Selbst
+   * eingetragene Werte bleiben unangetastet; nur leere Felder oder Werte einer früheren Suche
+   * werden ersetzt.
    */
   function lookUpBpm(next: FormState, force = false) {
     const title = next.title.trim();
     const artist = next.artist.trim();
     if (!title || !artist) return;
-    if (next.bpm.trim() !== '' && next.bpm !== bpmFromLookup) return;
+    const bpmFree = next.bpm.trim() === '' || next.bpm === bpmFromLookup;
+    const keyFree = next.musicalKey.trim() === '' || (keyFromLookup !== null && next.musicalKey === keyFromLookup);
+    if (!bpmFree && !keyFree) return;
 
     const duration = parseDuration(next.duration);
     const started = bpmLookup.search(
       { title, artist, durationSeconds: duration.ok ? duration.seconds : null },
-      (match) => setForm((current) => (current.bpm.trim() === '' ? { ...current, bpm: String(match.bpm) } : current)),
+      (match) =>
+        setForm((current) => ({
+          ...current,
+          bpm: current.bpm.trim() === '' ? String(match.bpm) : current.bpm,
+          musicalKey: current.musicalKey.trim() === '' && match.key ? match.key : current.musicalKey,
+        })),
       force,
     );
-    // Der Wert der vorigen Suche gehört zu einem anderen Song und muss weichen.
-    if (started && bpmFromLookup !== null) {
-      setForm((current) => (current.bpm === bpmFromLookup ? { ...current, bpm: '' } : current));
+    // Die Werte der vorigen Suche gehören zu einem anderen Song und müssen weichen.
+    if (started && (bpmFromLookup !== null || keyFromLookup !== null)) {
+      setForm((current) => ({
+        ...current,
+        bpm: bpmFromLookup !== null && current.bpm === bpmFromLookup ? '' : current.bpm,
+        musicalKey: keyFromLookup !== null && current.musicalKey === keyFromLookup ? '' : current.musicalKey,
+      }));
     }
   }
 
@@ -1106,6 +1140,43 @@ function SongForm({ song, onClose, onOpenSong, initialSearch, onSaved }: SongFor
           onChange={(event) => set('bpm', event.target.value)}
         />
       </Field>
+      <Field
+        label="Tonart"
+        htmlFor={`${id}-key`}
+        error={errors.musicalKey}
+        hint={keyFromLookup !== null && form.musicalKey === keyFromLookup ? 'Laut songbpm.com' : 'z. B. A oder C♯/D♭'}
+        className="span-2"
+      >
+        <input
+          id={`${id}-key`}
+          className="input"
+          value={form.musicalKey}
+          placeholder="A"
+          maxLength={20}
+          onChange={(event) => set('musicalKey', event.target.value)}
+        />
+      </Field>
+      <div className="field span-4">
+        <span className="field-label" id={`${id}-explicit`}>
+          Text
+        </span>
+        <div className="segmented" role="group" aria-labelledby={`${id}-explicit`}>
+          {EXPLICIT_OPTIONS.map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              aria-pressed={form.explicit === option.value}
+              onClick={() => set('explicit', option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="field-hint">
+          Für „Ohne explizite Texte“ im Generator. Treffer von Apple bringen die Angabe mit; eine entschärfte Fassung zählt
+          als explizit, weil das Original es ist.
+        </p>
+      </div>
     </div>
   );
 

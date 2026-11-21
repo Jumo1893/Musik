@@ -13,6 +13,8 @@ interface SongRow {
   genres: string[];
   main_genres: string[];
   bpm: number | null;
+  musical_key: string | null;
+  explicit: boolean | null;
   energy: number | null;
   sing_along: number | null;
   rating: number | null;
@@ -28,7 +30,7 @@ interface SongRow {
 
 const SELECT_SONGS = `
   SELECT s.id, s.title, s.artist, s.album, s.duration_seconds, s.release_year, s.genres,
-         song_main_genres(s.genres) AS main_genres, s.bpm,
+         song_main_genres(s.genres) AS main_genres, s.bpm, s.musical_key, s.explicit,
          s.energy, s.sing_along, s.rating, s.notes, s.apple_music_url, s.youtube_url, s.youtube_music_url,
          s.artwork_url, s.created_at, s.updated_at,
          COALESCE(
@@ -50,6 +52,8 @@ function toSong(row: SongRow): Song {
     genres: row.genres,
     mainGenres: row.main_genres,
     bpm: row.bpm,
+    musicalKey: row.musical_key,
+    explicit: row.explicit,
     energy: row.energy,
     singAlong: row.sing_along,
     rating: row.rating,
@@ -64,7 +68,7 @@ function toSong(row: SongRow): Song {
   };
 }
 
-/** Reihenfolge entspricht den Platzhaltern $1 bis $15 in INSERT und UPDATE. */
+/** Reihenfolge entspricht den Platzhaltern $1 bis $17 in INSERT und UPDATE. */
 function columnValues(input: SongInput, genres: string[]): unknown[] {
   return [
     input.title,
@@ -82,6 +86,8 @@ function columnValues(input: SongInput, genres: string[]): unknown[] {
     input.youtubeUrl,
     input.youtubeMusicUrl,
     input.artworkUrl,
+    input.musicalKey,
+    input.explicit,
   ];
 }
 
@@ -110,8 +116,9 @@ export async function createSong(db: Queryable, input: SongInput): Promise<Song>
   const genres = await prepareSongGenres(db, input.genres);
   const { rows } = await db.query<{ id: number }>(
     `INSERT INTO songs (title, artist, album, duration_seconds, release_year, genres, bpm, energy,
-                        sing_along, rating, notes, apple_music_url, youtube_url, youtube_music_url, artwork_url)
-     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                        sing_along, rating, notes, apple_music_url, youtube_url, youtube_music_url, artwork_url,
+                        musical_key, explicit)
+     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING id`,
     columnValues(input, genres),
   );
@@ -128,8 +135,8 @@ export async function updateSong(db: Queryable, id: number, input: SongInput): P
         SET title = $1, artist = $2, album = $3, duration_seconds = $4, release_year = $5,
             genres = $6::text[], bpm = $7, energy = $8, sing_along = $9, rating = $10, notes = $11,
             apple_music_url = $12, youtube_url = $13, youtube_music_url = $14, artwork_url = $15,
-            updated_at = now()
-      WHERE id = $16`,
+            musical_key = $16, explicit = $17, updated_at = now()
+      WHERE id = $18`,
     [...columnValues(input, genres), id],
   );
   if (result.rowCount === 0) return null;

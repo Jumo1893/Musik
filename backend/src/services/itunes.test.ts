@@ -16,6 +16,7 @@ const TRACK = {
   trackViewUrl: 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605&uo=4',
   artworkUrl100: 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/cover.jpg/100x100bb.jpg',
   previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/aa/bb/cc/mzaf_1.plus.aac.p.m4a',
+  trackExplicitness: 'notExplicit',
 };
 
 function fakeFetch(body: unknown, status = 200): { fetchFn: typeof fetch; calls: URL[] } {
@@ -39,7 +40,11 @@ describe('mapItunesTrack', () => {
       appleMusicUrl: 'https://music.apple.com/de/album/hurt/1440811595?i=1440811605',
       artworkUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/bb/cc/cover.jpg/300x300bb.jpg',
       previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/aa/bb/cc/mzaf_1.plus.aac.p.m4a',
+      explicit: false,
     });
+    assert.equal(mapItunesTrack({ ...TRACK, trackExplicitness: 'explicit' })?.explicit, true);
+    assert.equal(mapItunesTrack({ ...TRACK, trackExplicitness: 'cleaned' })?.explicit, true, 'entschärfte Fassung eines expliziten Songs');
+    assert.equal(mapItunesTrack({ ...TRACK, trackExplicitness: undefined })?.explicit, null);
   });
 
   test('kommt mit fehlenden Angaben zurecht', () => {
@@ -53,6 +58,7 @@ describe('mapItunesTrack', () => {
       appleMusicUrl: null,
       artworkUrl: null,
       previewUrl: null,
+      explicit: null,
     });
   });
 

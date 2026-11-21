@@ -49,6 +49,8 @@ function song(overrides: Partial<Song> = {}): Song {
     genres: [],
     mainGenres: [],
     bpm: null,
+    musicalKey: null,
+    explicit: null,
     energy: null,
     singAlong: null,
     rating: null,
@@ -708,5 +710,17 @@ describe('Relative Zeitangaben', () => {
     expect(formatRelativeTime('2026-11-21T09:00:00Z', now)).toBe('vor 3 Stunden');
     expect(formatRelativeTime('2026-11-20T12:00:00Z', now)).toBe('gestern');
     expect(formatRelativeTime('2026-11-01T12:00:00Z', now)).toBe('01.11.2026');
+  });
+});
+
+describe('Tonart und explizite Texte', () => {
+  test('die Kriterien nennen „ohne explizite Texte“, die CSV Tonart und Explicit', () => {
+    expect(describeCriteria({ ...EMPTY_CRITERIA, targetMinutes: null, excludeExplicit: true }, new Map())).toEqual([
+      'ohne explizite Texte',
+    ]);
+    const row = songCsvRow(song({ musicalKey: 'C♯/D♭', explicit: true }), new Map());
+    expect(SONG_CSV_HEADER.slice(-2)).toEqual(['Tonart', 'Explicit']);
+    expect(row.slice(-2)).toEqual(['C♯/D♭', 'ja']);
+    expect(songCsvRow(song({ explicit: null }), new Map()).at(-1)).toBeNull();
   });
 });

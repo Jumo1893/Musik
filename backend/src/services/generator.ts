@@ -16,6 +16,8 @@ export interface GeneratorSong {
   energy: number | null;
   singAlong: number | null;
   rating: number | null;
+  /** Text gilt als explizit; null: unbekannt */
+  explicit: boolean | null;
   categoryIds: number[];
 }
 
@@ -100,6 +102,8 @@ export function buildFilter(criteria: GeneratorCriteria): (song: GeneratorSong) 
 
   return (song) => {
     if (excludedSongs.has(song.id)) return false;
+    // Nur ausdrücklich als explizit bekannte Songs fallen weg; unbekannte bleiben.
+    if (criteria.excludeExplicit && song.explicit === true) return false;
     if (song.categoryIds.some((id) => excluded.has(id))) return false;
     if (wanted.size > 0) {
       const hits = countHits(song, wanted);

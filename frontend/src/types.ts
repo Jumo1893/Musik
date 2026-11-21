@@ -12,6 +12,10 @@ export interface Song {
   /** Hauptgenres der Genres (Rock für Alternative Rock), in der Reihenfolge der Genre-Liste */
   mainGenres: string[];
   bpm: number | null;
+  /** Tonart, z. B. „A“ oder „C♯/D♭“ */
+  musicalKey: string | null;
+  /** Text gilt als explizit; null: unbekannt */
+  explicit: boolean | null;
   /** 1 (ruhig) bis 5 (sehr energiegeladen) */
   energy: number | null;
   /** 1 (lieber zuhören) bis 5 (lauthals mitsingen) */
@@ -65,6 +69,8 @@ export interface GeneratorCriteria {
   singAlongMax: number | null;
   yearFrom: number | null;
   yearTo: number | null;
+  /** Songs mit explizitem Text weglassen (unbekannte bleiben dabei) */
+  excludeExplicit: boolean;
   targetMinutes: number | null;
   maxSongs: number | null;
   maxPerArtist: number | null;
@@ -117,6 +123,8 @@ export interface LookupResult {
   artworkUrl: string | null;
   /** Hörprobe von Apple (30 Sekunden), nur zum Abspielen im Browser */
   previewUrl: string | null;
+  /** Text gilt laut Apple als explizit; null: unbekannt */
+  explicit: boolean | null;
 }
 
 /** Ergebnis für einen eingefügten Link zu einem Song. */
