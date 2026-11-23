@@ -1,6 +1,6 @@
 # Ideen als User Stories
 
-Stand 21.11.2026 · Grundlage: Branch `feature/song-hinzufuegen-stories` (Datenbank bis Migration 011 „Sprache“) · Umgesetzt und deshalb entfernt: A1–A7, A9, A13, A15 und A16 (je ein Commit auf dem Branch). Dabei neu entstanden: A18–A21, B6 und C9, siehe auch [Prüfungen vom 21.11.2026](#prüfungen-vom-21112026).
+Stand 23.11.2026 · Grundlage: Branch `feature/song-hinzufuegen-stories` (Datenbank bis Migration 011 „Sprache“) · Umgesetzt und deshalb entfernt: A1–A7, A9, A13, A15 und A16 (je ein Commit auf dem Branch). Dabei neu entstanden: A18–A21, B6 und C9, siehe auch [Prüfungen vom 21.11.2026](#prüfungen-vom-21112026). Neu am 23.11.2026: Block E „Bewerten und Einordnen“ aus dem [Befund vom 23.11.2026](#befund-vom-23112026).
 
 Die Stories sind nach Bereichen gruppiert, der Schwerpunkt liegt auf **Song hinzufügen**. Jede Story hat eine Priorität (hoch / mittel / niedrig) und eine grobe Größe:
 
@@ -47,14 +47,28 @@ Die Stories sind nach Bereichen gruppiert, der Schwerpunkt liegt auf **Song hinz
 | D4 | Auswertung anklickbar | mittel | S |
 | D5 | Nur neue „Mag ich“-Videos zeigen | niedrig | S |
 | D6 | Zugriff aus dem Heimnetz absichern | niedrig | S |
+| | **Bewerten und Einordnen** | | |
+| E1 | Generator: Songs mit vielen Kategorien nicht bevorzugen | hoch | S |
+| E2 | Sternstufen als Verhalten, mit Beispielsongs | hoch | S |
+| E3 | Vergleichen: Welchen hörst du lieber? | mittel | M |
+| E4 | Pause für abgenutzte Songs | mittel | S |
+| E5 | Nachbewerten: Bewertungen aktuell halten | mittel | M |
+| E6 | Stimmung als Skala im Stimmungsfeld (Entscheidung offen) | hoch | M–L |
+| E7 | Stimmung vorschätzen, Stimmungs-Kategorien ablösen | hoch | M |
+| E8 | Merkmale: höchstens drei, mit klarer Bedeutung | mittel | M |
+| E9 | Anlässe als Regel oder handverlesene Liste | mittel | M |
+| E10 | Ähnliche Songs im Dialog als Vorlage | mittel | S–M |
+| E11 | Kategorien prüfen und Auffälligkeiten zeigen | mittel | M |
 
 ## Empfohlene Reihenfolge
 
 1. **Vor dem nächsten Update der echten App:** D1 (Sicherung). Live läuft Migration 009; mit diesem Branch kommen 010 und 011 dazu (auf einer Kopie der Bibliothek getestet).
-2. **Schnelle Gewinne:** B2, C1, B6 und A21. Klein, sofort spürbar; A21 füllt die neuen Angaben aus A15 für alle vorhandenen Songs.
-3. **Bibliothek vollständig machen:** B1 (Mitsingen und Sprache fehlen allen bisherigen Songs).
-4. Danach nach Lust und Laune: A10 mit A17, A11, A8, B3/B4, C2 bis C5.
-5. **Entscheidung offen:** A18 (inoffizielle Schnittstelle von YouTube Music).
+2. **Schnelle Gewinne:** B2, C1, B6 und A21, dazu E1 und E2. Klein, sofort spürbar; A21 füllt die neuen Angaben aus A15 für alle vorhandenen Songs, E1 hält Songs mit vielen Kategorien aus fast jeder Playlist heraus, E2 macht die Sterne eindeutiger.
+3. **Bibliothek vollständig machen:** B1 (Mitsingen und Sprache fehlen allen bisherigen Songs). Dieselben Karten nutzen später E5 und E7.
+4. **Einordnen neu aufstellen:** Nach der Entscheidung zu E6 erst E6 und E7, dann E8 (mit D3) und E9 (nach C1); E10 und E11 runden ab.
+5. **Bewertung über die Zeit:** E3, E4 und E5.
+6. Danach nach Lust und Laune: A10 mit A17, A11, A8, B3/B4, C2 bis C5.
+7. **Entscheidungen offen:** A18 (inoffizielle Schnittstelle von YouTube Music) und E6 (Stimmungsfeld statt Stimmungs-Kategorien).
 
 ## Für alle Stories
 
@@ -298,6 +312,7 @@ Priorität hoch · Größe M
 **Hinweise zur Umsetzung**
 
 - Ein `PATCH /api/songs/:id`, das nur die geänderten Felder schreibt, ist hier sicherer als das vollständige `PUT`: Es überschreibt nichts, wenn im Hintergrund gerade Tempo oder Genres nachgetragen werden.
+- Mit E6 kommt die Stimmung als weitere Skala dazu. E5 (Nachbewerten) und E7 (Stimmung bestätigen) nutzen dieselben Karten.
 
 ### B2 · Kategorie „Mitsingen“ in die neue Skala überführen
 
@@ -305,7 +320,7 @@ Priorität hoch · Größe S
 
 > Als Nutzer möchte ich die alte Kategorie „Mitsingen“ in die neue Mitsingen-Skala überführen, damit ich nicht zwei Angaben für dasselbe pflege und meine bisherige Einordnung nicht verloren geht.
 
-**Heute:** Migration 005 hat die Start-Kategorie „Mitsingen“ („Laut mitsingen, der Text sitzt“) angelegt, seit Migration 008 gibt es die Skala von 1 bis 5. Songs mit der Kategorie haben noch keinen Wert auf der Skala.
+**Heute:** Migration 005 hat die Start-Kategorie „Mitsingen“ („Laut mitsingen, der Text sitzt“) angelegt, seit Migration 008 gibt es die Skala von 1 bis 5. Stand 23.11.2026 haben alle 56 Songs mit der Kategorie schon einen Wert auf der Skala; zu übertragen gibt es also nichts mehr, offen ist nur, ob die Kategorie bleibt (Kriterium 4). Bei 16 Songs widersprechen sich beide Angaben: 12 mit der Kategorie stehen auf der Skala bei 3 oder darunter, 4 mit Stufe 5 tragen die Kategorie nicht.
 
 **Akzeptanzkriterien**
 
@@ -387,6 +402,7 @@ Priorität mittel · Größe S
 - Die anderen Schreibweisen stehen in `genre_aliases` (Migration 006); Änderungen kommen als neue Migration. Die Auswahl steckt in `chooseGenres` in `genreLookup.ts`.
 - Woher „Klassik“ bei „Folsom Prison Blues“ kommt, ist noch offen (vermutlich ein Tag wie „classic“ oder „classical“).
 - Bereits übernommene Genres ändert das nicht; dafür eignet sich B4 (mehrere Songs auf einmal bearbeiten).
+- Die aussortierten Stimmungs-Tags müssen nicht verloren gehen: E6 kann sie als Vorschlag für die Stimmung nutzen.
 
 ---
 
@@ -460,6 +476,10 @@ Priorität mittel · Größe M
 4. Sortiert wird nach Ähnlichkeit: gemeinsame Kategorien, gemeinsame Untergenres, ähnliches Tempo, ähnliche Energie, gleiches Jahrzehnt.
 5. Der Namensvorschlag lautet „Wie ‚Hurt‘“.
 
+**Hinweise zur Umsetzung**
+
+- Mit E6 wird der Abstand im Stimmungsfeld das stärkste Maß für Ähnlichkeit; die Rangfolge ähnlicher Songs aus E10 lässt sich wiederverwenden.
+
 ### C5 · Playlist per Ziehen umsortieren
 
 Priorität mittel · Größe S
@@ -511,6 +531,10 @@ Priorität niedrig · Größe M–L
 2. Der Inhalt wird beim Öffnen neu berechnet; Liste, Dauer und Export zeigen den aktuellen Stand.
 3. Der YouTube-Abgleich überträgt den Stand zum Zeitpunkt des Abgleichs.
 4. „In normale Playlist umwandeln“ friert den aktuellen Inhalt ein.
+
+**Hinweise zur Umsetzung**
+
+- Anlässe als Regel (E9) brauchen dieselbe Technik: Regeln aus den Filtern des Generators, geprüft mit `buildFilter`.
 
 ### C9 · Harmonische Übergänge nach Tonart
 
@@ -573,6 +597,7 @@ Priorität mittel · Größe M
 **Hinweise zur Umsetzung**
 
 - Migration: `categories.group_name` und `categories.position`.
+- E8 geht weiter: Dort werden die Gruppen zu Arten (Merkmal, Anlass) mit eigenen Regeln, und die Stimmungen wandern mit E6 und E7 in eine Skala. Für sich allein lohnt D2 nur, wenn Block E nicht kommt.
 
 ### D3 · Kategorien zusammenführen
 
@@ -585,6 +610,10 @@ Priorität niedrig · Größe S
 1. Auf der Kategorien-Seite gibt es „Zusammenführen mit …“. Alle Songs der einen Kategorie bekommen die andere, danach wird die erste gelöscht.
 2. Gespeicherte Generator-Kriterien, die die gelöschte Kategorie nennen, zeigen danach auf die verbliebene.
 3. Die Rückfrage nennt die Zahlen („18 Songs, davon 5 schon in beiden“).
+
+**Hinweise zur Umsetzung**
+
+- Kandidaten laut Befund vom 23.11.2026: „wütend“ und „agressiv“; „Roadtrip“ und „Ski“ teilen sich 14 von 15 Songs (ob sie getrennte Listen bleiben, siehe E9).
 
 ### D4 · Auswertung anklickbar
 
@@ -627,6 +656,268 @@ Priorität niedrig · Größe S
 
 ---
 
+## E · Bewerten und Einordnen
+
+Grundlage ist der [Befund vom 23.11.2026](#befund-vom-23112026): Mehr als die Hälfte der Songs hat 4 Sterne, ein Song trägt im Schnitt sechs Kategorien, die häufigsten hängen an zwei Dritteln der neuen Songs, und Lieblingssongs tragen die meisten. Dadurch unterscheiden sich Songs kaum, und Songs mit vielen Kategorien landen in fast jeder Playlist. Die Stories folgen drei Gedanken:
+
+- **Vergleichen statt absolut urteilen:** Beispielsongs an den Skalen, ähnliche Songs im Dialog, ein eigener Modus zum Vergleichen.
+- **Skalen für Abstufungen, Kategorien nur für Klares:** Die Stimmung wird eine Skala wie die Energie; übrig bleiben wenige Merkmale und die Anlässe.
+- **Bewertungen altern:** Abgenutzte Songs pausieren, Bewertungen werden nach einer Weile noch einmal bestätigt.
+
+### E1 · Generator: Songs mit vielen Kategorien nicht bevorzugen
+
+Priorität hoch · Größe S
+
+> Als Nutzer möchte ich, dass ein Song mit 15 Kategorien nicht in jeder Playlist landet, damit eine Playlist nach dem klingt, was ich gewählt habe.
+
+**Heute:** Der Generator wertet, welchen Anteil der gewünschten Kategorien ein Song trägt (`categoryFit` in `generatePlaylist`). Bei „entspannt + gemütlich“ bekommen „These Words“ (4 Kategorien) und „I Will Survive“ (15 Kategorien, darunter Party und Sport) beide die volle Punktzahl; „I Will Survive“ gewinnt dann über die bessere Bewertung.
+
+**Akzeptanzkriterien**
+
+1. Die Passung misst die Überdeckung zwischen den gewünschten Kategorien und denen des Songs: gemeinsame geteilt durch alle zusammen. Im Beispiel kommt „These Words“ auf 0,5, „I Will Survive“ auf 0,13.
+2. Ohne den Zufallsanteil gilt: Tragen zwei gleich bewertete Songs dieselben gewünschten Kategorien, steht der mit weniger Kategorien vorn.
+3. Ohne den Zufallsanteil gilt auch: Bei gleich vielen Kategorien liegt ein Song, der alle gewünschten trägt, vor einem, der nur einen Teil trägt.
+4. Die Filter („eine davon“ / „alle“) bleiben, wie sie sind; es ändert sich nur die Rangfolge der Kandidaten.
+5. Derselbe Seed liefert weiterhin dasselbe Ergebnis.
+
+**Hinweise zur Umsetzung**
+
+- Formel: `hits / (wanted.size + song.categoryIds.length - hits)` (Jaccard). Wirkt sie zu streng, ist „Trefferanteil × √(Treffer / Kategorien des Songs)“ die mildere Alternative; mit Tests in `generator.test.ts` entscheiden.
+- Der Kommentar zu den Gewichten (der Zufall ist kleiner als der Abstand zwischen „eine von zwei“ und „zwei von zwei“) gilt danach nicht mehr in jedem Fall; die Gewichte prüfen.
+- E1 hilft sofort mit den vorhandenen Daten. Mit E6 bis E8 tragen Songs ohnehin weniger Kategorien.
+
+### E2 · Sternstufen als Verhalten, mit Beispielsongs
+
+Priorität hoch · Größe S
+
+> Als Nutzer möchte ich beim Bewerten wissen, was eine Stufe bedeutet, und sehen, welche meiner Songs schon so bewertet sind, damit ich nicht fast alles auf 4 setze und mein Maßstab über Wochen gleich bleibt.
+
+**Heute:** Die Stufen heißen „geht so“, „ganz gut“, „gut“, „sehr gut“ und „Lieblingssong“. 54 % der Songs haben 4 Sterne, 1 Stern kommt nie vor. Die Songs vom 13.11.2026 haben im Schnitt 3,1 Sterne, die vom 21.11.2026 3,8.
+
+**Akzeptanzkriterien**
+
+1. Die Stufen beschreiben, was man tut, wenn der Song läuft: 1 „skippe ich“, 2 „lass ich laufen“, 3 „freu mich, wenn er kommt“, 4 „mach ich gezielt an“, 5 „kriege ich nie genug von“. Das gilt überall, wo Sterne stehen (Song-Dialog, Generator, Auswertung).
+2. Zeigt man im Song-Dialog auf eine Stufe, nennt sie zwei bis drei eigene Songs mit dieser Bewertung, etwa „4 – mach ich gezielt an, wie Rolling in the Deep, Counting Stars“. Bevorzugt werden zuletzt bestätigte Songs (E5), sonst zufällige, die beim erneuten Öffnen dieselben bleiben.
+3. Unter den Sternen steht dezent die Verteilung, etwa „Deine Songs: 2 ★ 8 % · 3 ★ 29 % · 4 ★ 54 % · 5 ★ 9 %“, die gewählte Stufe hervorgehoben.
+4. Vorhandene Bewertungen bleiben, wie sie sind.
+
+**Hinweise zur Umsetzung**
+
+- `RATING_LABELS` in `ui.tsx`. `ScaleInput` zeigt die Bezeichnung schon neben den Sternen und als `title` an jeder Stufe; für die Beispielsongs braucht es eine optionale Ergänzung je Stufe.
+- Dasselbe lohnt sich später für Energie und Mitsingen (Beispielsongs je Stufe).
+- Mit der neuen Bedeutung rutschen manche 4 zu 3 oder 5. Dabei helfen E3 und E5.
+
+### E3 · Vergleichen: Welchen hörst du lieber?
+
+Priorität mittel · Größe M
+
+> Als Nutzer möchte ich zwei meiner Songs nebeneinander sehen und nur sagen, welchen ich lieber höre, damit sich meine vielen 4-Sterne-Songs ohne Grübeln in eine Reihenfolge bringen lassen.
+
+**Akzeptanzkriterien**
+
+1. Eine Seite „Vergleichen“ zeigt zwei Songs mit gleich vielen Sternen nebeneinander: Cover, Titel, Interpret und Reinhören (wie in A9).
+2. Antworten per Klick oder Taste: **←** links lieber, **→** rechts lieber, **↓** gleich, **Leertaste** überspringen („kenne ich zu wenig“), **Esc** beendet. Danach kommt sofort das nächste Paar.
+3. Die App wählt Paare, die am meisten bringen: Songs mit wenigen Vergleichen und ähnlichem Stand; dasselbe Paar kommt nicht zweimal kurz hintereinander. Ab und zu treten die stärksten Songs einer Stufe gegen die schwächsten der nächsthöheren an.
+4. Aus den Antworten entsteht eine Reihenfolge innerhalb jeder Stufe. Der Song-Dialog zeigt sie als „Platz 7 von 50 mit 4 Sternen (12 Vergleiche)“; die Songliste sortiert bei „Bewertung“ innerhalb gleicher Sterne danach.
+5. Der Generator rechnet innerhalb einer Stufe mit dem Platz: Der stärkste Song mit 4 Sternen zählt fast wie 4,5, der schwächste wie 3,5.
+6. Gewinnt ein Song nach mindestens fünf Vergleichen die meisten gegen die nächsthöhere Stufe (oder verliert die meisten gegen die nächstniedrigere), schlägt die App vor, die Sterne zu ändern. Ändern muss man selbst.
+7. Songs ohne Sterne kommen zuerst dran und treten gegen Songs verschiedener Stufen an; nach etwa fünf Vergleichen schlägt die App eine Stufe vor. Beim Anlegen darf die Bewertung deshalb leer bleiben („Kannst du später beim Vergleichen festlegen“).
+8. Jüngere Vergleiche zählen mehr als alte (etwa halbes Gewicht nach einem halben Jahr), damit die Reihenfolge dem heutigen Geschmack folgt.
+
+**Hinweise zur Umsetzung**
+
+- Migration: Tabelle für Vergleiche (zwei Songs, Ergebnis, Zeitpunkt; `ON DELETE CASCADE`). Die Reihenfolge daraus jeweils neu berechnen, etwa nach Bradley-Terry oder Elo mit Zeitgewicht; bei einigen tausend Vergleichen geht das schnell genug.
+- Grobe Rechnung: Für 50 Songs mit 4 Sternen reichen rund 150 Vergleiche für eine brauchbare Reihenfolge, also gut zehn Minuten.
+- Ausbaustufe „Fünferrunde“: fünf Songs einer Stufe per Ziehen ordnen; das ersetzt zehn Einzelvergleiche.
+
+### E4 · Pause für abgenutzte Songs
+
+Priorität mittel · Größe S
+
+> Als Nutzer möchte ich einen Song, den ich mir gerade übergehört habe, für ein paar Wochen aus neuen Playlists heraushalten, ohne seine Bewertung zu senken, damit er danach von selbst zurückkommt.
+
+**Akzeptanzkriterien**
+
+1. Im Song-Dialog, in der Songliste und im Vorschlag des Generators gibt es „Pause“ für 2, 4 oder 8 Wochen.
+2. Pausierte Songs lässt der Generator weg; die Option „auch pausierte Songs“ holt sie zurück. Unter dem Vorschlag steht, wie viele deshalb fehlen.
+3. Die Songliste zeigt „Pause bis 21.12.“ und filtert auf Wunsch nach pausierten Songs; „Pause beenden“ hebt die Pause vorzeitig auf.
+4. Nach Ablauf zählt der Song ohne weiteres Zutun wieder. Gespeicherte Playlists bleiben unberührt.
+
+**Hinweise zur Umsetzung**
+
+- Migration: `songs.paused_until date`. Pausiert heißt `paused_until > current_date`; ein Auftrag im Hintergrund ist nicht nötig.
+- Im Vorschlag sitzt „Pause“ neben dem vorhandenen Entfernen (`excludeSongIds`).
+- Verwandt mit C3: Die Abwechslung zwischen Playlists wirkt von selbst, die Pause ist eine bewusste Entscheidung.
+
+### E5 · Nachbewerten: Bewertungen aktuell halten
+
+Priorität mittel · Größe M
+
+> Als Nutzer möchte ich ab und zu gefragt werden, ob eine Bewertung noch stimmt, damit die Sterne meinem heutigen Geschmack folgen und nicht auf dem Stand des Tages bleiben, an dem ich den Song angelegt habe.
+
+**Heute:** Eine Bewertung ändert sich nur, wenn man den Song zufällig öffnet; von 92 Songs wurden 2 nach dem Anlegen noch einmal bearbeitet. Neue Songs bewertet man oft im Schwung (73 an einem Tag).
+
+**Akzeptanzkriterien**
+
+1. Die App merkt sich, wann eine Bewertung gesetzt und wann sie zuletzt bestätigt wurde. Im Song-Dialog steht etwa „bewertet am 21.11.2026“.
+2. Fällig ist eine Bewertung, die vier Wochen nach dem Setzen noch nie bestätigt wurde (frische Bewertungen liegen oft daneben), und jede, die seit einem halben Jahr nicht bestätigt wurde.
+3. „Nachbewerten (12 fällig)“ auf der Songliste und in der Auswertung startet Karten wie in B1: Cover, Reinhören, die bisherigen Sterne mit Datum und die Beispielsongs aus E2.
+4. Tasten: **Enter** „passt noch“, **1–5** neue Sterne, **P** Pause (E4), **→** überspringen, **Esc** beenden. Jede Antwort wird sofort gespeichert.
+5. Eine Runde umfasst höchstens 20 Songs, die ältesten zuerst. Am Ende steht eine Zusammenfassung („17 bestätigt, 3 geändert“).
+6. Neue Sterne im Song-Dialog zählen als neue Bewertung; Speichern ohne Änderung zählt nicht als Bestätigung.
+
+**Hinweise zur Umsetzung**
+
+- Migration: `songs.rating_set_at` und `songs.rating_checked_at`; vorhandene Bewertungen bekommen das Anlegedatum. Damit werden bis zum 19.12.2026 alle bisherigen Songs fällig, deshalb die Runden zu je 20.
+- Die Karten teilen sich den Aufbau mit B1 und E7; wer zuerst kommt, baut sie. `PATCH /api/songs/:id` aus B1 passt auch hier.
+- Ausbaustufe: Verlauf jeder Bewertung und in der Auswertung „Wie sich dein Geschmack verändert hat“.
+
+### E6 · Stimmung als Skala, eingeordnet im Stimmungsfeld
+
+Priorität hoch · Größe M–L · **Entscheidung offen**
+
+> Als Nutzer möchte ich die Stimmung eines Songs mit einem Klick neben ähnlichen Songs einordnen, statt mehrere ähnliche Kategorien anzukreuzen, damit ähnliche Songs ähnlich eingeordnet sind und sich Playlists nach Stimmung genau zusammenstellen lassen.
+
+**Heute:** Die Stimmung steckt in Kategorien wie „fröhlich“, „melancholisch“, „entspannt“ oder „aufpushend“. Jede kennt nur Ja oder Nein: „fröhlich“ hängt an 67 % der Songs vom 21.11.2026, 7 Songs sind „fröhlich“ und „melancholisch“ zugleich, und die meisten Kategorien reichen über die ganze Energie-Spanne.
+
+**Vorher entscheiden:** Löst die Skala die Stimmungs-Kategorien ab (Vorschlag, siehe E7), oder kommt sie nur dazu?
+
+**Akzeptanzkriterien**
+
+1. Neue Skala „Stimmung“ von 1 bis 5: „düster“, „melancholisch“, „gemischt“, „heiter“, „euphorisch“. Keine Angabe ist erlaubt.
+2. Der Song-Dialog zeigt ein Feld aus 5 × 5 Kästchen: nach rechts heiterer, nach oben mehr Energie. Ein Klick setzt Stimmung und Energie zugleich; Pfeiltasten und Enter gehen auch. Für Screenreader bleiben beide Skalen einzeln bedienbar.
+3. Im Feld liegen die schon eingeordneten Songs, je Kästchen bis zu drei kleine Cover und „+4“; zeigt man darauf, erscheint die Liste. So setzt man einen neuen Song neben ähnliche.
+4. Die Bereiche des Feldes tragen Namen, die der Dialog beim Zeigen nennt:
+
+   | Energie ↓ · Stimmung → | düster (1–2) | gemischt (3) | heiter (4–5) |
+   |---|---|---|---|
+   | hoch (4–5) | wütend | aufpushend | euphorisch |
+   | mittel (3) | melancholisch | bittersüß | fröhlich |
+   | niedrig (1–2) | traurig | nachdenklich | entspannt |
+
+5. Generator: Filter „Stimmung von–bis“ wie bei der Energie, dazu die Bereiche als Schnellwahl („fröhlich“ setzt Stimmung 4–5 und Energie 3; beides lässt sich danach weiten). Die Beschreibung der Kriterien nennt die Stimmung; gespeicherte Kriterien ohne Stimmung gelten weiter.
+6. Die Vorschläge aus ähnlichen Songs (A6) nennen auch die übliche Stimmung („ähnliche Songs: meist heiter“).
+7. Die Auswertung zeigt das Feld als Verteilung der Bibliothek (Songs je Kästchen) und „Mit Stimmungs-Angabe“ unter „Vollständigkeit der Angaben“.
+
+**Hinweise zur Umsetzung**
+
+- Migration: `songs.mood smallint CHECK (mood BETWEEN 1 AND 5)` wie Energie und Mitsingen; im Generator `moodMin` und `moodMax` analog zur Energie (`SCALE_FILTERS`, `buildFilter`, `describeCriteria`).
+- Vorbild ist das in der Musikpsychologie gängige Modell aus Valenz (Stimmung) und Erregung (Energie); Spotify beschrieb Songs mit denselben beiden Werten („valence“ und „energy“).
+- Optional als Vorschlag für die Stimmung: Stimmungs-Tags von MusicBrainz wie „sad“, „happy“ oder „chill“, die B6 aus den Genres heraushält.
+- B1 bekommt die Stimmung als weitere Skala. C4 (Playlist von einem Song aus) kann den Abstand im Feld als Ähnlichkeit nutzen.
+
+### E7 · Stimmung vorschätzen, Stimmungs-Kategorien ablösen
+
+Priorität hoch · Größe M (setzt E6 voraus)
+
+> Als Nutzer möchte ich meine vorhandenen Songs nicht von vorn einordnen, sondern eine Schätzung aus meinen bisherigen Kategorien bestätigen, damit der Umstieg aufs Stimmungsfeld schnell geht und nichts von meiner Einordnung verloren geht.
+
+**Akzeptanzkriterien**
+
+1. Für jeden Song ohne Stimmung schätzt die App einen Startwert aus seinen Kategorien: Ausgangswert 3, „fröhlich“ +1, „entspannt“, „gemütlich“ und „romantisch“ je +0,5, „melancholisch“, „wütend“ und „agressiv“ je −1, „nachdenklich“ −0,5; gerundet und auf 2–4 begrenzt (die äußeren Stufen vergibt man selbst). Songs ohne eine dieser Kategorien bekommen keinen Startwert. „Fröhlich“ und „melancholisch“ zusammen ergeben 3, also „bittersüß“.
+2. Vorher zeigt die App die Zuordnung und das Ergebnis als Feld („so lägen deine Songs“). Kategorien, die es nicht mehr gibt, fallen weg.
+3. Bestätigen geht auf zwei Wegen: im großen Feld, in dem man Songs von Kästchen zu Kästchen zieht, oder Song für Song als Karten wie in B1 mit vorgewähltem Startwert. Gespeichert wird nur, was man bestätigt.
+4. Danach bietet die Kategorien-Seite an, die Stimmungs-Kategorien einzeln zu löschen („fröhlich“, „melancholisch“, „entspannt“, „gemütlich“, „aufpushend“, „wütend“, „agressiv“, „nachdenklich“). Gespeicherte Generator-Kriterien, die eine davon verlangen, stellt die App auf den passenden Bereich des Feldes um (wie in B2).
+5. Eine Zusammenfassung nennt, was geändert wurde.
+
+**Hinweise zur Umsetzung**
+
+- Wie B2 bewusst als Aktion in der App statt als Migration: Kategorien können umbenannt sein, und bestätigen soll der Nutzer.
+- Bis zum Löschen bleiben die alten Kategorien wirksam; der Generator kann beides zugleich.
+- Bereichsnamen und Zuordnung an einer Stelle halten, damit E6 (Schnellwahl) und E7 dieselben Begriffe nutzen.
+
+### E8 · Merkmale: höchstens drei, mit klarer Bedeutung
+
+Priorität mittel · Größe M
+
+> Als Nutzer möchte ich je Song nur die Merkmale wählen, die ihn wirklich ausmachen, und bei jedem Merkmal sehen, was es bedeutet, damit Kategorien Songs wieder unterscheiden, statt an fast allen zu hängen.
+
+**Heute:** Ein Song trägt im Schnitt sechs Kategorien, Songs mit 5 Sternen 9,6. Weil jede Kategorie nur Ja oder Nein kennt, wählt man alles, was annähernd passt. Die selbst angelegten Kategorien („groovy“, „tanzend“, „Ski“, „agressiv“, „Filmmusik“) haben keine Beschreibung.
+
+**Akzeptanzkriterien**
+
+1. Jede Kategorie hat eine Art: **Merkmal** (was den Song ausmacht, etwa groovy, tanzbar, episch, verträumt, nostalgisch, romantisch, motivierend) oder **Anlass** (wofür man ihn hört, siehe E9). Bis E7 umgesetzt ist, gibt es zusätzlich **Stimmung**. Für die vorhandenen Kategorien schlägt die App die Art vor; man bestätigt einmal.
+2. Song-Dialog, Filter der Songliste und Generator zeigen die Kategorien nach Art getrennt, mit kleiner Überschrift.
+3. Je Song höchstens drei Merkmale. Der Dialog zählt mit („2 von 3“); beim vierten fragt er „Welche drei treffen am meisten zu?“ und nimmt ihn erst, wenn ein anderes abgewählt ist. Die Zahl lässt sich auf der Kategorien-Seite ändern. Songs, die schon mehr tragen, behalten sie und erscheinen in E11.
+4. Jedes Merkmal hat eine Beschreibung in einem Satz und bis zu drei Beispielsongs, die man auf der Kategorien-Seite wählt. Zeigt man im Dialog auf ein Merkmal, erscheinen beide.
+5. Die Kategorien-Seite nennt je Kategorie, wie viele Songs sie trägt („58 von 92 Songs, 63 %“), und weist ab 40 % darauf hin, dass sie kaum unterscheidet.
+6. „In Genre umwandeln“ trägt allen Songs einer Kategorie ein Genre ein und löscht die Kategorie danach, etwa „Filmmusik“ → Genre „Soundtrack“.
+
+**Hinweise zur Umsetzung**
+
+- Migration: `categories.kind` und eine Tabelle für Beispielsongs; Beschreibungen gibt es schon (`categories.description`).
+- Geht über D2 hinaus: Die Gruppen aus D2 sind hier die Arten; die Reihenfolge innerhalb einer Art aus D2 bleibt sinnvoll.
+- „Mitsingen“ ist weder Merkmal noch Anlass, sondern gehört in die Skala (B2). „wütend“ und „agressiv“ zusammenführen (D3).
+
+### E9 · Anlässe als Regel oder handverlesene Liste
+
+Priorität mittel · Größe M (setzt E8 voraus, Regeln mit Tempo auch C1)
+
+> Als Nutzer möchte ich für einen Anlass wie „Sport“ einmal festlegen, welche Songs dazu passen, statt ihn bei jedem Song anzukreuzen, damit auch neue Songs von selbst in die richtigen Playlists kommen.
+
+**Heute:** Anlässe sind Kategorien wie alle anderen. „Sport“ hängt an 13 Songs, darunter einer mit Energie 2; „Roadtrip“ und „Ski“ teilen sich 14 von 15 Songs.
+
+**Akzeptanzkriterien**
+
+1. Jeder Anlass ist entweder eine **Regel** oder eine **Liste**, wählbar auf der Kategorien-Seite.
+2. Eine **Regel** nutzt die Filter des Generators (Energie, Stimmung, Tempo, Mitsingen, Genres, Sprache, Merkmale), etwa „Sport: Energie ab 4, Tempo 120–180“. Je Song gibt es Ausnahmen: „immer dabei“ und „nie dabei“.
+3. Eine **Liste** funktioniert wie heute: Man wählt die Songs von Hand. Gedacht für persönliche Sammlungen wie „Ski“ oder „Roadtrip“.
+4. Beim Umstellen auf eine Regel zeigt die App den Unterschied, etwa: „Die Regel trifft 31 Songs, darunter 9 deiner 13 Sport-Songs. Die übrigen 4 als ‚immer dabei‘ übernehmen?“
+5. Im Song-Dialog zeigt ein Regel-Anlass, ob der Song laut Regel dazugehört (blasses Häkchen); ein Klick legt eine Ausnahme fest.
+6. Generator, Filter der Songliste und Auswertung behandeln beide Formen gleich: Ein Song gehört zum Anlass, wenn die Regel samt Ausnahmen passt oder er auf der Liste steht.
+
+**Hinweise zur Umsetzung**
+
+- Die Regel ist ein Ausschnitt von `GeneratorCriteria`, geprüft mit `buildFilter`. Dieselbe Technik braucht C8: Ein Anlass als Regel ist eine intelligente Kategorie.
+- Migration: Regel als `jsonb` an der Kategorie, Tabelle für die Ausnahmen.
+- Ob „Ski“ und „Roadtrip“ Listen bleiben oder zusammengehören (D3), entscheidet der Nutzer.
+
+### E10 · Ähnliche Songs im Dialog als Vorlage
+
+Priorität mittel · Größe S–M
+
+> Als Nutzer möchte ich beim Einordnen die ähnlichsten Songs meiner Bibliothek mit ihren Angaben sehen und als Vorlage nehmen können, damit ähnliche Songs ähnlich eingeordnet werden und ich sehe, woran ich mich orientiere.
+
+**Heute:** Seit A6 schlägt der Dialog Kategorien vor („Passt vielleicht“) und nennt die übliche Stufe („ähnliche Songs: meist 4“). Welche Songs dahinterstehen, verrät nur der Tooltip als Zahl. Weil derselbe Interpret am stärksten zählt, bekommen Songs eines Interpreten leicht alle dieselben Kategorien (15 Songs von DAT ADAM).
+
+**Akzeptanzkriterien**
+
+1. Unter den Skalen stehen die drei ähnlichsten Songs als kleine Karten: Cover, Titel, Sterne, Energie, Stimmung (E6), Mitsingen und Merkmale, dazu der Grund („gleicher Interpret“, „Cloud Rap, ähnliches Tempo“).
+2. Höchstens zwei der drei stammen vom selben Interpreten.
+3. „Wie diesen einordnen“ übernimmt Energie, Stimmung, Mitsingen und Merkmale in leere Felder, nie die Sterne. Danach passt man an.
+4. Sobald Energie und Stimmung gesetzt sind, zählt auch der Abstand im Stimmungsfeld zur Ähnlichkeit.
+
+**Hinweise zur Umsetzung**
+
+- `similarGroups` in `frontend/src/lib/suggestions.ts` liefert die Kandidaten schon; nötig ist eine Rangfolge einzelner Songs statt nur der Mehrheiten.
+- Die Mehrheitshinweise aus A6 können bleiben oder in den Karten aufgehen.
+
+### E11 · Kategorien prüfen und Auffälligkeiten zeigen
+
+Priorität mittel · Größe M
+
+> Als Nutzer möchte ich eine Kategorie über alle ihre Songs hinweg durchsehen und auf Widersprüche hingewiesen werden, damit meine Einordnung einheitlich wird, ohne dass ich jeden Song einzeln öffne.
+
+**Akzeptanzkriterien**
+
+1. Auf der Kategorien-Seite öffnet „Durchgehen“ alle Songs einer Kategorie als Liste, sortiert nach Stimmung und Energie, mit Cover und Reinhören. Ein Klick auf ✕ nimmt die Kategorie vom Song (mit „Rückgängig“).
+2. Darunter steht „Könnte auch passen“: Songs ohne die Kategorie, die im Stimmungsfeld nah bei ihren Songs liegen oder ähnliche Merkmale tragen. Ein Klick fügt sie hinzu.
+3. Die Auswertung bekommt „Auffälligkeiten“, jeweils mit Zahl und Link zu den Songs:
+   - Kategorien an mehr als 40 % der Songs,
+   - Paare, die fast immer zusammen vorkommen („Roadtrip“ und „Ski“: 14 von 15), mit „Zusammenführen“ (D3),
+   - Gegensätze an einem Song („fröhlich“ und „melancholisch“, „entspannt“ und „aufpushend“),
+   - Kategorie und Energie passen nicht zusammen („Party“ mit Energie unter 4, „aufpushend“ unter 3, „entspannt“ über 3),
+   - Songs mit mehr Merkmalen als erlaubt (E8) und, bis B2 umgesetzt ist, Kategorie und Skala „Mitsingen“, die sich widersprechen.
+4. Erledigte Auffälligkeiten verschwinden; einzelne lassen sich als „passt so“ markieren.
+
+**Hinweise zur Umsetzung**
+
+- Die Paare berechnet die Auswertung schon („Häufige Kombinationen“). Für „fast immer zusammen“ zählt der Anteil (gemeinsame Songs geteilt durch alle Songs mit einer der beiden), nicht die bloße Zahl.
+- Welche Paare Gegensätze sind und welche Kategorie zu welcher Energie passt, ist bis E6 und E7 eine feste Liste nach Namen; danach erledigt das Stimmungsfeld das meiste.
+- „Passt so“ braucht eine kleine Tabelle; die Links zu den Songs brauchen die Filter aus B3 (wie D4).
+
+---
+
 ## Weitere Ideen, nur angerissen
 
 - **Interpreten-Seite:** alle Songs eines Interpreten, Ø Bewertung, häufigste Kategorien, „Mehr von diesem Interpreten“ (A11).
@@ -635,6 +926,23 @@ Priorität niedrig · Größe S
 - **Einschätzung per KI** (optional, mit eigenem API-Schlüssel): Stimmung und Energie bekannter Songs vorschlagen lassen. Das widerspricht allerdings dem Grundsatz, möglichst wenig nach außen zu geben; die Vorschläge aus ähnlichen Songs der Bibliothek (seit A6) sind die lokale Alternative.
 
 ---
+
+## Befund vom 23.11.2026
+
+Auswertung der echten Bibliothek (92 Songs, nur lesend) als Grundlage für Block E:
+
+| Punkt | Ergebnis | Folge |
+|---|---|---|
+| Verteilung der Sterne | 2 Sterne: 7 Songs, 3: 27, 4: 50 (54 %), 5: 8; 1 Stern nie | E2, E3 |
+| Maßstab über die Zeit | 13.11. (18 Songs): im Schnitt 3,1 Sterne und 2,2 Kategorien; 21.11. (73 Songs): 3,8 Sterne und 6,9 Kategorien | E2, E5 |
+| Kategorien je Song | im Schnitt 6,0; bei 2 Sternen 2,7, bei 5 Sternen 9,6; „I Will Survive“ trägt 15, darunter Party, Sport, Fokus, entspannt und gemütlich | E1, E8 |
+| Verbreitung (Songs vom 21.11.) | „Mitsingen“ 75 %, „fröhlich“ 67 %, „groovy“ 62 %, „verträumt“ 58 % | E6, E8 |
+| Energie je Kategorie | Die meisten großen Kategorien reichen von Energie 2 bis 5; Energie 1 kommt nicht vor | E6 |
+| Widersprüche | 7 Songs „fröhlich“ und „melancholisch“, 2 „entspannt“ und „aufpushend“, 5 „Party“-Songs mit Energie 3 | E6, E11 |
+| Doppelungen | „Roadtrip“ und „Ski“ teilen sich 14 von 15 Songs; „wütend“ und „agressiv“; Kategorie und Skala „Mitsingen“ widersprechen sich bei 16 Songs | B2, D3, E9 |
+| Interpreten | 15 Songs von DAT ADAM, meist mit denselben Kategorien | E10 |
+| Später geändert | 2 von 92 Songs wurden nach dem Anlegen noch einmal bearbeitet | E5 |
+| Playlists | noch keine gespeichert | – |
 
 ## Prüfungen vom 21.11.2026
 
